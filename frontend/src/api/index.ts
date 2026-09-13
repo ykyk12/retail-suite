@@ -1,9 +1,13 @@
 import { http } from './http'
 import type {
+  AgentChatResponse,
+  AgentToolInfo,
   AskResponse,
+  BatchView,
   CategoryView,
   DailyRow,
   DraftView,
+  ExpirySummary,
   InventoryFlowView,
   LoginResponse,
   LowStockItem,
@@ -13,6 +17,8 @@ import type {
   ReconcileResult,
   ReportOverview,
   SaleView,
+  StewardActionResult,
+  StewardReport,
   TopProduct,
   UserView
 } from '@/types'
@@ -49,7 +55,19 @@ export const productApi = {
 export const inventoryApi = {
   lowStock: () => http.get<LowStockItem[]>('/inventory/low-stock'),
   flows: (productId: number, limit = 20) => http.get<InventoryFlowView[]>(`/inventory/flows/${productId}`, { limit }),
-  adjust: (data: { productId: number; delta: number; remark: string }) => http.post<InventoryFlowView>('/inventory/adjust', data)
+  adjust: (data: { productId: number; delta: number; remark: string }) => http.post<InventoryFlowView>('/inventory/adjust', data),
+  /** 批次台账：这一批什么时候到期、还剩多少、成本多少 */
+  batches: (productId: number) => http.get<BatchView[]>(`/inventory/batches/${productId}`),
+  expiring: (days?: number) =>
+    http.get<BatchView[]>('/inventory/expiring', days ? { days } : undefined),
+  expired: () => http.get<BatchView[]>('/inventory/expired'),
+  expirySummary: (days?: number) =>
+    http.get<ExpirySummary>('/inventory/expiry-summary', days ? { days } : undefined),
+  /** 批次数量之和与库存总数对不上的商品（数据自查） */
+  batchMismatch: () => http.get<Array<Record<string, unknown>>>('/inventory/batch-mismatch'),
+  /** 报损出库（过期/破损下架）：按近效期先出扣批次 */
+  loss: (data: { productId: number; quantity: number; batchNo?: string; remark: string }) =>
+    http.post<InventoryFlowView>('/inventory/loss', data)
 }
 
 export const purchaseApi = {
@@ -96,5 +114,24 @@ export const aiApi = {
   confirm: (id: number, data?: { supplierName?: string; remark?: string }) =>
     http.post<DraftView>(`/ai/drafts/${id}/confirm`, data ?? {}),
   discard: (id: number) => http.post<void>(`/ai/drafts/${id}/discard`),
+  /** 兼容旧路径（后端已由管家 Agent 运行时接管，前端新代码请用 agentApi.chat） */
   ask: (question: string) => http.post<AskResponse>('/ai/assistant/ask', { question })
+}
+
+/** 管家 Agent：多轮会话 + 工具轨迹；写操作只会产出草稿 */
+export const agentApi = {
+  chat: (question: string, sessionId?: string) =>
+    http.post<AgentChatResponse>('/agent/chat', sessionId ? { question, sessionId } : { question }),
+  tools: () => http.get<AgentToolInfo[]>('/agent/tools')
+}
+
+/** 管家巡检日报：主动发现问题 + 一键转采购草稿 */
+export const stewardApi = {
+  inspect: () => http.post<StewardReport>('/steward/inspect'),
+  latest: () => http.get<StewardReport>('/steward/reports/latest'),
+  reports: (limit = 10) => http.get<StewardReport[]>('/steward/reports', { limit }),
+  detail: (id: number) => http.get<StewardReport>(`/steward/reports/${id}`),
+  executeAction: (id: number, code: string, actionType?: string) =>
+    http.post<StewardActionResult>(`/steward/reports/${id}/findings/${code}/actions`,
+      actionType ? { actionType } : {})
 }

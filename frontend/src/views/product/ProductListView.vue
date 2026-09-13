@@ -109,6 +109,12 @@
           <el-input-number v-model="form.lowStockThreshold" :min="0" />
           <span class="text-muted" style="margin-left: 8px">低于该值进入补货预警</span>
         </el-form-item>
+        <el-form-item label="保质期">
+          <el-input-number v-model="form.shelfLifeDays" :min="0" :max="3650" />
+          <span class="text-muted" style="margin-left: 8px">
+            天（留空表示不追踪；填了之后入库会按"生产日期 + 保质期"推算到期日，并进入临期预警）
+          </span>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="formVisible = false">取消</el-button>
@@ -211,7 +217,8 @@ function openCreate() {
     purchasePrice: 0,
     salePrice: 0,
     initStock: 0,
-    lowStockThreshold: 10
+    lowStockThreshold: 10,
+    shelfLifeDays: undefined
   })
   formVisible.value = true
 }
@@ -226,7 +233,8 @@ function openEdit(row: ProductView) {
     unit: row.unit,
     purchasePrice: Number(row.purchasePrice),
     salePrice: Number(row.salePrice),
-    lowStockThreshold: row.lowStockThreshold
+    lowStockThreshold: row.lowStockThreshold,
+    shelfLifeDays: row.shelfLifeDays ?? undefined
   })
   formVisible.value = true
 }
@@ -247,7 +255,8 @@ async function save() {
         unit: form.unit,
         purchasePrice: form.purchasePrice,
         salePrice: form.salePrice,
-        lowStockThreshold: form.lowStockThreshold
+        lowStockThreshold: form.lowStockThreshold,
+        shelfLifeDays: form.shelfLifeDays ?? null
       })
       ElMessage.success('已保存')
     } else {
@@ -260,7 +269,8 @@ async function save() {
         purchasePrice: form.purchasePrice,
         salePrice: form.salePrice,
         initStock: form.initStock,
-        lowStockThreshold: form.lowStockThreshold
+        lowStockThreshold: form.lowStockThreshold,
+        shelfLifeDays: form.shelfLifeDays ?? null
       })
       ElMessage.success('已新建商品')
     }

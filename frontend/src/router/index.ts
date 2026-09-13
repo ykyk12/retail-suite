@@ -45,6 +45,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '库存管理', icon: 'Box', permission: 'inventory:read' }
       },
       {
+        path: 'expiry',
+        name: 'expiry',
+        component: () => import('@/views/inventory/ExpiryBatchesView.vue'),
+        meta: { title: '临期与批次', icon: 'AlarmClock', permission: 'inventory:read' }
+      },
+      {
         path: 'purchases',
         name: 'purchases',
         component: () => import('@/views/purchase/PurchaseListView.vue'),
@@ -63,6 +69,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '报表对账', icon: 'TrendCharts', permission: 'report:read' }
       },
       {
+        path: 'steward-report',
+        name: 'steward-report',
+        component: () => import('@/views/steward/StewardReportView.vue'),
+        meta: { title: '管家日报', icon: 'Bell', permission: 'report:read' }
+      },
+      {
         path: 'ai-draft',
         name: 'ai-draft',
         component: () => import('@/views/ai/AiDraftView.vue'),
@@ -71,8 +83,8 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'assistant',
         name: 'assistant',
-        component: () => import('@/views/ai/AssistantView.vue'),
-        meta: { title: '经营助手', icon: 'ChatDotRound', permission: 'ai:use' }
+        component: () => import('@/views/ai/StewardChatView.vue'),
+        meta: { title: '管家对话', icon: 'ChatDotRound', permission: 'ai:use' }
       }
     ]
   },

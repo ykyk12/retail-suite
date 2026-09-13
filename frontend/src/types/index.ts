@@ -49,6 +49,8 @@ export interface ProductView {
   stock: number
   lowStockThreshold: number
   lowStock: boolean
+  /** 保质期天数；不填表示不追踪保质期（日用品） */
+  shelfLifeDays?: number
   status: number
   updatedAt?: string
 }
@@ -83,6 +85,9 @@ export interface PurchaseItemView {
   quantity: number
   unitCost: number
   amount: number
+  /** 生产日期与保质期：确认入库时用它推算批次到期日 */
+  productionDate?: string
+  shelfLifeDays?: number
 }
 
 export interface PurchaseView {
@@ -201,4 +206,104 @@ export interface AskResponse {
   source: string
   toolsUsed: string[]
   steps: string[]
+}
+
+// ---------------------------------------------------------------------------
+// 批次与保质期（M1）
+// ---------------------------------------------------------------------------
+
+export interface BatchView {
+  id: number
+  batchNo: string
+  productId: number
+  productName: string
+  productionDate?: string
+  expiryDate?: string
+  quantity: number
+  costPrice: number
+  remark?: string
+  /** 距到期天数；无到期日时为 null */
+  daysToExpiry?: number | null
+  expired: boolean
+}
+
+export interface ExpirySummary {
+  alertDays: number
+  expiringBatchCount: number
+  expiringQuantity: number
+  expiringAmount: number
+  expiredBatchCount: number
+  expiredQuantity: number
+  expiredAmount: number
+}
+
+// ---------------------------------------------------------------------------
+// 管家 Agent 与巡检日报（M2/M3）
+// ---------------------------------------------------------------------------
+
+/** 一次工具调用的轨迹（前端用它展示"它到底查了什么"） */
+export interface AgentToolCallStep {
+  round: number
+  tool: string
+  args: Record<string, unknown>
+  success: boolean
+  observation: string
+  elapsedMs: number
+  /** 写操作：需要人工确认（当前只会生成草稿） */
+  requiresConfirmation: boolean
+}
+
+export interface AgentChatResponse {
+  sessionId: string
+  answer: string
+  /** LLM（大模型作答）或 RULE（本地规则兜底） */
+  source: string
+  toolsUsed: string[]
+  steps: AgentToolCallStep[]
+  cards: Array<Record<string, unknown>>
+}
+
+export interface AgentToolInfo {
+  name: string
+  description: string
+  parameters: Record<string, string>
+  permission: string
+  readOnly: boolean
+  requiresConfirmation: boolean
+}
+
+/** 巡检发现上的可执行动作 */
+export interface StewardAction {
+  type: string
+  label: string
+  executable: boolean
+  hint: string
+  payload: Record<string, unknown>
+}
+
+export interface StewardFinding {
+  code: string
+  /** HIGH 需立即处理 / WARN 需要关注 / INFO 提示 */
+  severity: string
+  title: string
+  detail: string
+  metrics: Record<string, unknown>
+  actions: StewardAction[]
+}
+
+export interface StewardReport {
+  id: number
+  reportDate: string
+  source: string
+  generatedAt: string
+  headline: string
+  findingCount: number
+  highCount: number
+  findings: StewardFinding[]
+}
+
+export interface StewardActionResult {
+  actionType: string
+  message: string
+  data: Record<string, unknown>
 }

@@ -105,6 +105,23 @@
             <el-input-number v-model="row.unitCost" :min="0" :precision="2" :step="0.5" size="small" />
           </template>
         </el-table-column>
+        <el-table-column label="生产日期" width="170">
+          <template #default="{ row }">
+            <el-date-picker
+              v-model="row.productionDate"
+              type="date"
+              size="small"
+              value-format="YYYY-MM-DD"
+              placeholder="可选"
+              style="width: 100%"
+            />
+          </template>
+        </el-table-column>
+        <el-table-column label="保质期(天)" width="130">
+          <template #default="{ row }">
+            <el-input-number v-model="row.shelfLifeDays" :min="0" :max="3650" size="small" placeholder="用商品档案" />
+          </template>
+        </el-table-column>
         <el-table-column width="70">
           <template #default="{ $index }">
             <el-button text type="danger" @click="form.items.splice($index, 1)">删</el-button>
@@ -112,6 +129,10 @@
         </el-table-column>
       </el-table>
       <el-button text type="primary" @click="addItem">+ 添加一行</el-button>
+      <div class="text-muted tip">
+        填了生产日期 + 保质期后，确认入库会按"生产日期 + 保质期"生成批次到期日，并自动进入临期预警与批次台账；
+        留空则用商品档案里的保质期，两者都没有就不追踪效期。
+      </div>
 
       <template #footer>
         <span class="text-muted" style="float: left">共 {{ form.items.length }} 行</span>
@@ -132,6 +153,12 @@
         <el-table-column prop="productName" label="商品" />
         <el-table-column prop="quantity" label="数量" width="80" />
         <el-table-column prop="unitCost" label="进价" width="90" />
+        <el-table-column label="生产日期" width="110">
+          <template #default="{ row }">{{ row.productionDate ?? '—' }}</template>
+        </el-table-column>
+        <el-table-column label="保质期" width="90">
+          <template #default="{ row }">{{ row.shelfLifeDays ? `${row.shelfLifeDays} 天` : '不追踪' }}</template>
+        </el-table-column>
         <el-table-column prop="amount" label="金额" width="100" />
       </el-table>
     </el-dialog>
@@ -149,6 +176,9 @@ interface DraftItem {
   productId?: number
   quantity: number
   unitCost: number
+  /** 生产日期与保质期：确认入库时用来推算批次到期日 */
+  productionDate?: string
+  shelfLifeDays?: number
 }
 
 const auth = useAuthStore()
@@ -193,6 +223,8 @@ function onProductPicked(row: DraftItem, id: number) {
   const product = options.value.find((item) => item.id === id)
   if (product) {
     row.unitCost = Number(product.purchasePrice)
+    // 商品档案里有保质期就先带上，收银/店长仍可临时改（不同批次可能不同）
+    row.shelfLifeDays = product.shelfLifeDays ?? undefined
   }
 }
 
@@ -222,7 +254,9 @@ async function create() {
       items: items.map((item) => ({
         productId: item.productId as number,
         quantity: item.quantity,
-        unitCost: item.unitCost
+        unitCost: item.unitCost,
+        productionDate: item.productionDate || null,
+        shelfLifeDays: item.shelfLifeDays ?? null
       }))
     })
     ElMessage.success('采购单已保存为草稿，确认入库后库存才会增加')

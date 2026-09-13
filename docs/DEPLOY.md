@@ -36,11 +36,20 @@ docker compose ps       # 四个容器都应是 healthy / running
 2. 后端启动时 `DemoDataInitializer` 幂等补齐（**只增不改、不含 DELETE**）：
    - 门店（按 code 判断）、角色与权限码、分类、演示商品（仅当门店没有任何商品时）
    - `admin` / `cashier` 账号（BCrypt 哈希在运行时生成，不写死在 SQL 里）
-3. 后端定时任务默认每天 `00:10` 重算日汇总（`app.report.daily-summary-cron`）
+3. 后端定时任务：
+   - 每天 `00:10` 重算日汇总（`app.report.daily-summary-cron`）
+   - 每天 `07:30` 管家巡检，为每个在营门店生成当天日报（`app.steward.inspect-cron`，门店开门前）
+4. 老库升级（已有数据）按 `deploy/mysql/migration/` 下的脚本顺序执行：
+   - `v1.1.0-batch-expiry.sql`：批次与保质期（`product_batch` 表 + 商品保质期 + 采购明细生产日期）
+   - `v1.2.0-steward-report.sql`：管家巡检日报（`steward_report` 表，纯增量、可回滚）
 
 > 为什么演示数据有一部分在 Java 里：SQL 种子带 DELETE 时，Spring 每次新建上下文都会重跑它，
 > 在测试环境会把已有商品与库存流水删掉（只留下订单），造成"有销售、无流水"的假对账差异。
 > 这个坑在 CI 上真实出现过，所以改为 Java 幂等初始化，代码里也留了注释。
+
+> 升级到 v1.1.0 之后请做一次批次补齐：老库存没有批次（历史数据没有生产日期），
+> 走一次盘点或确认一张采购单让库存落到批次上，然后用 `GET /api/inventory/batch-mismatch`
+> 复核到返回空数组为止——否则临期预警会看不到旧库存的效期。
 
 ## 4. 环境变量
 
@@ -51,6 +60,8 @@ docker compose ps       # 四个容器都应是 healthy / running
 | `JWT_SECRET` | 占位串 | **必须改**：`openssl rand -base64 32` |
 | `AI_ENABLED` | `true` | 关掉则不复用模型（AI 走规则解析） |
 | `AI_BASE_URL` / `AI_MODEL` / `AI_API_KEY` | DeepSeek 默认 | 任何 OpenAI 兼容服务均可；不填 Key 时 AI 自动退化为本地规则解析 |
+| `EXPIRY_ALERT_DAYS` | `30` | 临期预警阈值（天） |
+| `STEWARD_INSPECT_CRON` | `0 30 7 * * ?` | 管家巡检时间（cron，默认每天 07:30） |
 | `SPRING_PROFILES_ACTIVE` | `prod` | `prod` 用 MySQL + Redis；不带 profile 时用 H2 文件库 |
 
 ## 5. 数据备份与恢复
@@ -76,7 +87,10 @@ docker compose up -d
 docker compose logs -f backend | grep -E "Started|ERROR"
 ```
 
-- 表结构变更：把新的 DDL 追加成 `deploy/mysql/init/02-*.sql` **只对全新库生效**；已有库请手工执行迁移（当前版本没有引入 Flyway，升级前务必先备份）
+- 表结构变更：把新的 DDL 追加成 `deploy/mysql/init/01-schema.sql` 里的 `CREATE TABLE IF NOT EXISTS` **只对全新库生效**；
+  已有库请按 `deploy/mysql/migration/vX.Y.Z-*.sql` 顺序手工执行迁移（当前版本没有引入 Flyway，升级前务必先备份）
+- 迁移脚本约定：一个版本一个文件、只做增量、文件头写清"适用版本 / 执行命令 / 回滚方式"；
+  `v1.2.0-steward-report.sql` 只新增表与索引，回滚就是 `DROP TABLE steward_report;` + 退回旧镜像
 - 回滚：镜像换成上一个 tag/commit 重新 build，数据库回滚用备份恢复
 
 ## 7. 常见故障
@@ -88,13 +102,16 @@ docker compose logs -f backend | grep -E "Started|ERROR"
 | 接口 403 且提示"缺少权限" | 当前账号角色没有该权限码：用 admin 给角色加权限（`sys_role_permission`），或换有权限的账号 |
 | 收银提示"库存不足" | 这是对的：先采购入库或盘点调整；可到「库存管理 → 库存流水」看这个商品的完整变动记录 |
 | 报表当天数据为空 | 汇总表是物化的：点「报表对账 → 重算该区间汇总」，或等定时任务 |
+| 「管家日报」页提示还没有报告 | 定时巡检每天 07:30 才跑；点页面上的「立即巡检」即可生成今天这一份（或 `POST /api/steward/inspect`） |
+| 临期页看到"批次与库存不符" | 老库存没有批次（升级前的历史数据）：走一次盘点或确认一张采购单补齐，直到该列表为空 |
+| 一键转草稿提示没有权限 | 该动作走的是 Agent 写工具，需要 `purchase:write`；给角色加权限后重新登录（权限码写在令牌里） |
 | 导出 Excel 无响应 | 浏览器可能拦了下载；接口是带 Authorization 的 blob 下载，检查是否被代理去掉请求头 |
 | 端口 80 被占用 | 改 `docker-compose.yml` 里 frontend 的端口映射（如 `8081:80`） |
 
 ## 8. 不进 Docker 的部署方式
 
-后端：`mvn -DskipTests package` 得到 `target/retail-suite-1.0.0.jar`，
-`SPRING_PROFILES_ACTIVE=prod MYSQL_HOST=... JWT_SECRET=... java -jar retail-suite-1.0.0.jar`
+后端：`mvn -DskipTests package` 得到 `target/retail-suite-1.3.0.jar`，
+`SPRING_PROFILES_ACTIVE=prod MYSQL_HOST=... JWT_SECRET=... java -jar retail-suite-1.3.0.jar`
 
 前端：`cd frontend && npm ci && npm run build`，把 `dist/` 交给任意 Nginx/Apache，
 并把 `/api` 反代到后端（配置参考 `frontend/nginx.conf`）。

@@ -66,11 +66,13 @@ const allMenus: MenuItem[] = [
   { path: '/pos', title: '收银台', icon: 'ShoppingCart' },
   { path: '/products', title: '商品管理', icon: 'Goods' },
   { path: '/inventory', title: '库存管理', icon: 'Box' },
+  { path: '/expiry', title: '临期与批次', icon: 'AlarmClock' },
   { path: '/purchases', title: '采购进货', icon: 'Van' },
   { path: '/sales', title: '订单查询', icon: 'Tickets' },
   { path: '/reports', title: '报表对账', icon: 'TrendCharts' },
+  { path: '/steward-report', title: '管家日报', icon: 'Bell' },
   { path: '/ai-draft', title: 'AI 录单', icon: 'MagicStick' },
-  { path: '/assistant', title: '经营助手', icon: 'ChatDotRound' }
+  { path: '/assistant', title: '管家对话', icon: 'ChatDotRound' }
 ]
 
 const permissionOf = (path: string): string | undefined =>

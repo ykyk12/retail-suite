@@ -24,12 +24,13 @@ MySQL / H2
 ```
 store ─┬─ sys_user ── sys_user_role ── sys_role ── sys_role_permission
        ├─ product_category ─┐
-       ├─ product ◄─────────┘        （库存就在 product.stock）
-       │     ▲
-       │     └── inventory_flow      （每一次库存变动一条账，ref_no 指回来源单据）
-       ├─ purchase_order ── purchase_order_item
+       ├─ product ◄─────────┘        （聚合库存在 product.stock）
+       │     ├── inventory_flow      （每一次库存变动一条账，ref_no 指回来源单据，batch_id 指批次）
+       │     └── product_batch       （批次台账：生产日/到期日/该批剩余数量与成本）
+       ├─ purchase_order ── purchase_order_item（可登记生产日期与保质期）
        ├─ sale_order ── sale_order_item（refunded_quantity、cost_price 冻结）
        ├─ daily_sales_summary        （(store_id, summary_date) 唯一）
+       ├─ steward_report             （(store_id, report_date) 唯一，findings 存 JSON）
        ├─ audit_log                  （append-only）
        └─ ai_draft                   （解析中间态，人工确认后才生成单据）
 ```
@@ -37,7 +38,10 @@ store ─┬─ sys_user ── sys_user_role ── sys_role ── sys_role_pe
 设计取舍：
 - **金额一律 `DECIMAL(12,2)` + `BigDecimal`**，不用 `double`（浮点误差在收银场景是灾难）
 - **明细冗余商品名与条码**：商品改名/改条码后，历史单据与小票不能跟着变
-- **库存放在商品表**：单店一商品一库存，拆表只会多一次 join；真正的多仓场景才需要独立库存表
+- **聚合库存在 `product`，批次明细在 `product_batch`**：收银扣减只需要条件更新一行（性能最好），
+  批次在同一事务里按"近效期先出"（FEFO）扣；两者一致性由 `GET /api/inventory/batch-mismatch` 显式暴露，
+  不悄悄修正数据（账不对必须让人看见）
+- **批次成本价独立于商品进价**：同一商品不同批次进价可能不同，毛利按实际批次成本算
 
 ## 3. 并发与一致性（四个场景）
 
@@ -47,6 +51,7 @@ store ─┬─ sys_user ── sys_user_role ── sys_role ── sys_role_pe
 | 收银幂等 | `sale_order.request_id` 唯一索引 + 冲突后事务外回查 | 内存 Map 跨实例无效、重启丢；"先查再插"在并发下有竞态窗口 |
 | 退货防超退 | `refunded_quantity` 条件更新（`quantity - refunded_quantity >= n`） | 先查再改在并发下会退超 |
 | 采购确认入库 | 状态机条件更新（`WHERE status='DRAFT'`） | 避免并发重复确认把库存加两次 |
+| 批次扣减（FEFO） | 按 `expiry_date` 升序取批次，逐批条件更新 `quantity >= n` | 与聚合库存同一事务；到期日为空（不追踪效期）的批次排在最后 |
 
 事务边界原则：**扣库存 + 写流水 + 落单据必须在同一个本地事务**，任一失败整体回滚，因此不会出现"扣了库存没订单"或"有订单没扣库存"。
 幂等入口用 `TransactionTemplate` 而不是方法级 `@Transactional`，原因是需要"捕获唯一键冲突后在事务外回查"（见 README 6.2）。
@@ -61,6 +66,8 @@ store ─┬─ sys_user ── sys_user_role ── sys_role ── sys_role_pe
 
 ## 5. AI 模块
 
+### 5.1 自然语言录单
+
 ```
 用户原话 ──►（配了模型）LLM 解析 JSON ──┐
            └─（未配/失败）本地规则解析 ──┴─► 匹配商品（条码优先，其次名称）
@@ -73,10 +80,41 @@ store ─┬─ sys_user ── sys_user_role ── sys_role ── sys_role_pe
                                    采购单（草稿）→ 采购页确认入库才动库存
 ```
 
-助手侧：模型只做"选工具 + 传参数"，工具全是只读查询（营业额/畅销/库存预警/单品库存/对账），数字由 Java 查库返回。
-没配模型时用规则意图识别，功能不降级为不可用。
-
 写操作路径上的三道闸：**草稿不是单据** → **确认只生成草稿态采购单** → **入库仍需采购页确认**。
+
+### 5.2 管家 Agent 运行时（对话问答 + 主动巡检）
+
+```
+                    ┌──────────── AgentToolRegistry（声明式工具契约）────────────┐
+                    │ name / description / parameters / permission / readOnly   │
+                    └───────────────────────────┬───────────────────────────────┘
+用户提问 ──► AgentRuntime ──模型可用──► LLM 输出一个 JSON 动作（tool / answer）
+                 │                          │
+                 │                     AgentToolExecutor
+                 │                （守卫：权限 + 每用户每分钟限流 + 审计
+                 │                  参数必填校验 + 门店 id 由登录态注入）
+                 │                          │
+                 └──模型不可用──► RuleIntentRouter（规则兜底，同一执行器）
+                                            │
+                          工具（10 个）：销售概况/排行/单品画像/临期/库存健康/
+                          补货建议/滞销/毛利异常/对账/采购草稿（唯一写操作）
+
+定时巡检（每天 07:30）──► StewardInspectionService ──► 8 类发现 ──► steward_report 落库
+                                                        │
+                                            补货建议带 CREATE_PURCHASE_DRAFT 动作
+                                                        ▼
+                              一键转草稿 —— 仍走 AgentToolExecutor（同一套权限/审计）
+```
+
+关键设计（都是"把约束写进代码而不是写进提示词"）：
+- **工具自带权限码**：注册表按账号权限过滤工具目录，收银员根本看不到进货类工具
+- **写操作只出草稿**：`readOnly=false` 的工具只能产出 DRAFT 采购单，库存不变；确认入库仍需人工
+- **模型不传门店 id**：`storeId` 由登录态注入，从根上避免"帮我查隔壁店"
+- **参数不信任模型**：缺必填参数直接拒绝，让它重问，而不是瞎猜一个商品
+- **单一口径**：补货/滞销/毛利三个算法只在 `StewardAnalysisService` 里实现一次，
+  对话与巡检日报共用——否则早晚出现"对话说补 5 件、日报说补 8 件"
+- **报告明细有上限且先排序**：每条发现最多列 20 条明细，截断前按压货金额/毛利率/可卖天数排序，
+  保证留下的是最该看的；超限条数写进 `metrics.omittedCount`
 
 ## 6. 明确的取舍
 
