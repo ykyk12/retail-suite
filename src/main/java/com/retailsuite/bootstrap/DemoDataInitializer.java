@@ -1,7 +1,10 @@
 package com.retailsuite.bootstrap;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.retailsuite.inventory.entity.ProductBatch;
+import com.retailsuite.inventory.mapper.ProductBatchMapper;
 import com.retailsuite.product.dto.ProductDtos;
+import com.retailsuite.product.entity.Product;
 import com.retailsuite.product.entity.ProductCategory;
 import com.retailsuite.product.mapper.ProductCategoryMapper;
 import com.retailsuite.product.mapper.ProductMapper;
@@ -22,6 +25,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -86,6 +90,7 @@ public class DemoDataInitializer implements ApplicationRunner {
     private final ProductMapper productMapper;
     private final ProductCategoryMapper productCategoryMapper;
     private final ProductService productService;
+    private final ProductBatchMapper productBatchMapper;
     private final PasswordEncoder passwordEncoder;
 
     @Override
@@ -94,6 +99,7 @@ public class DemoDataInitializer implements ApplicationRunner {
         ensureRolesAndPermissions();
         ensureCategories(store.getId());
         ensureDemoProducts(store.getId());
+        backfillOpeningBatches(store.getId());
         ensureUser(store.getId(), "admin", "admin123", "张店长", "ADMIN");
         ensureUser(store.getId(), "cashier", "cashier123", "小李（收银员）", "CASHIER");
 
@@ -179,8 +185,55 @@ public class DemoDataInitializer implements ApplicationRunner {
         log.info("已写入 {} 个演示商品（含期初库存流水）", DEMO_PRODUCTS.size());
     }
 
-    private void ensureUser(Long storeId, String username, String rawPassword, String realName, String roleCode) {
-        SysUser existing = sysUserMapper.selectOne(new LambdaQueryWrapper<SysUser>()
+    /**
+     * 期初批次补齐（幂等）：有库存却没有批次的商品，补一个"期初建账"批次。
+     *
+     * 为什么需要它：批次是后加的模型，而期初库存有两条来路都不带批次——
+     * 一是 SQL 直接灌的演示数据（deploy/mysql/init/02-seed.sql），
+     * 二是从老版本升级上来的历史库存。
+     * 不补的话，门店第一次打开管家日报就会看到「批次数量与库存总数对不上」：
+     * 那是事实，但首装/演示数据不该自带这种噪声，而且临期预警与批次成本核算会直接失真。
+     *
+     * 到期日口径与应用保持一致：没登记生产日期时按"入库日 + 商品保质期"推算并在备注里留痕；
+     * 不追踪保质期的商品（日用品）不设到期日。
+     */
+    private void backfillOpeningBatches(Long storeId) {
+        List<Product> products = productMapper.selectList(new LambdaQueryWrapper<Product>()
+                .eq(Product::getStoreId, storeId)
+                .gt(Product::getStock, 0));
+        int created = 0;
+        for (Product product : products) {
+            long batches = productBatchMapper.selectCount(new LambdaQueryWrapper<ProductBatch>()
+                    .eq(ProductBatch::getStoreId, storeId)
+                    .eq(ProductBatch::getProductId, product.getId()));
+            if (batches > 0) {
+                continue;
+            }
+            Integer shelfLife = product.getShelfLifeDays();
+            boolean tracksExpiry = shelfLife != null && shelfLife > 0;
+            ProductBatch batch = new ProductBatch();
+            batch.setStoreId(storeId);
+            batch.setProductId(product.getId());
+            batch.setBatchNo("BINIT-" + product.getId());
+            batch.setProductionDate(null);
+            batch.setExpiryDate(tracksExpiry ? LocalDate.now().plusDays(shelfLife) : null);
+            batch.setQuantity(product.getStock());
+            batch.setCostPrice(product.getPurchasePrice());
+            batch.setRemark(tracksExpiry
+                    ? "期初建账批次（未登记生产日期，按入库日 + 保质期推算到期日）"
+                    : "期初建账批次（不追踪保质期）");
+            batch.setCreatedAt(LocalDateTime.now());
+            batch.setUpdatedAt(LocalDateTime.now());
+            batch.setDeleted(0);
+            productBatchMapper.insert(batch);
+            created++;
+        }
+        if (created > 0) {
+            log.info("已为期初库存补齐 {} 个批次（保证'批次数量之和 = 库存总数'，否则日报会报账实不符）", created);
+        }
+    }
+
+    private void ensureUser(Long storeId, String username, String rawPassword, String realName, String roleCode) {        SysUser existing = sysUserMapper.selectOne(new LambdaQueryWrapper<SysUser>()
                 .eq(SysUser::getUsername, username));
         Long userId;
         if (existing == null) {

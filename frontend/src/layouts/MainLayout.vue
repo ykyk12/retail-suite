@@ -1,9 +1,12 @@
 <template>
   <el-container class="layout">
-    <el-aside width="200px" class="aside">
+    <el-aside width="224px" class="aside">
       <div class="brand">
-        <el-icon size="20"><Shop /></el-icon>
-        <span>云小店</span>
+        <div class="brand-mark"><el-icon size="18"><Shop /></el-icon></div>
+        <div class="brand-text">
+          <div class="brand-name">云小店</div>
+          <div class="brand-sub">零售管家 · 进销存</div>
+        </div>
       </div>
       <el-menu :default-active="activePath" router class="menu">
         <el-menu-item v-for="item in menus" :key="item.path" :index="item.path">
@@ -11,20 +14,31 @@
           <span>{{ item.title }}</span>
         </el-menu-item>
       </el-menu>
+      <div class="aside-foot">
+        <div class="foot-row">
+          <span class="foot-label">门店</span>
+          <span class="foot-value">#{{ auth.user?.storeId ?? '-' }}</span>
+        </div>
+        <div class="foot-row">
+          <span class="foot-label">账号</span>
+          <span class="foot-value">{{ auth.displayName }}</span>
+        </div>
+      </div>
     </el-aside>
 
     <el-container>
       <el-header class="header">
         <div class="header-left">
           <span class="page-name">{{ currentTitle }}</span>
-          <el-tag v-if="auth.user" size="small" type="info">门店 #{{ auth.user.storeId }}</el-tag>
-          <el-tag v-for="role in auth.user?.roles ?? []" :key="role" size="small">{{ role }}</el-tag>
+          <el-tag v-for="role in auth.user?.roles ?? []" :key="role" size="small" effect="light">
+            {{ role }}
+          </el-tag>
         </div>
         <div class="header-right">
           <el-button text @click="refreshUser">刷新权限</el-button>
           <el-dropdown @command="onCommand">
             <span class="user">
-              <el-icon><UserFilled /></el-icon>
+              <span class="avatar">{{ (auth.displayName || '?').slice(0, 1) }}</span>
               {{ auth.displayName }}
               <el-icon><ArrowDown /></el-icon>
             </span>
@@ -37,7 +51,7 @@
         </div>
       </el-header>
 
-      <el-main>
+      <el-main class="main">
         <router-view />
       </el-main>
     </el-container>
@@ -111,51 +125,108 @@ async function onCommand(command: string) {
 }
 
 .aside {
-  background: #1f2d3d;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #161f33 0%, #1d2740 100%);
   color: #fff;
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 16px;
-  font-size: 16px;
-  font-weight: 600;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  gap: 10px;
+  padding: 18px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.brand-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--brand) 0%, #7aa2ff 100%);
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(47, 107, 255, 0.35);
+}
+
+.brand-name {
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: 0.5px;
+}
+
+.brand-sub {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+  margin-top: 2px;
 }
 
 .menu {
+  flex: 1;
   border-right: none;
   background: transparent;
+  padding: 10px 8px;
+  overflow-y: auto;
 }
 
 .menu :deep(.el-menu-item) {
-  color: #c0c4cc;
+  color: rgba(255, 255, 255, 0.68);
+  height: 42px;
+  line-height: 42px;
+  margin-bottom: 4px;
+  border-radius: 10px;
+}
+
+.menu :deep(.el-menu-item:hover) {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
 }
 
 .menu :deep(.el-menu-item.is-active) {
   color: #fff;
-  background: #409eff;
+  background: linear-gradient(90deg, rgba(47, 107, 255, 0.95) 0%, rgba(47, 107, 255, 0.65) 100%);
+  box-shadow: 0 6px 16px rgba(47, 107, 255, 0.28);
+}
+
+.aside-foot {
+  padding: 12px 16px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+}
+
+.foot-row {
+  display: flex;
+  justify-content: space-between;
+  color: rgba(255, 255, 255, 0.6);
+  line-height: 1.9;
+}
+
+.foot-value {
+  color: rgba(255, 255, 255, 0.92);
+  font-weight: 500;
 }
 
 .header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #fff;
-  border-bottom: 1px solid #e4e7ed;
+  height: 60px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 2px rgba(20, 32, 60, 0.03);
 }
 
 .header-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .page-name {
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 650;
 }
 
 .header-right {
@@ -167,7 +238,32 @@ async function onCommand(command: string) {
 .user {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
   cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 999px;
+  transition: background 0.16s ease;
+}
+
+.user:hover {
+  background: var(--brand-weak);
+}
+
+.avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--brand-weak);
+  color: var(--brand-strong);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.main {
+  padding: 18px 20px 28px;
+  background: var(--bg);
 }
 </style>

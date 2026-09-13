@@ -1,26 +1,28 @@
 <template>
   <div>
-    <div class="cards">
-      <el-card shadow="never" class="card-gap">
-        <div class="metric-label">今日净销售额</div>
-        <div class="metric money">{{ overview?.netAmount ?? 0 }} <small>元</small></div>
-        <div class="text-muted">销售额 {{ overview?.salesAmount ?? 0 }}，退款 {{ overview?.refundAmount ?? 0 }}</div>
-      </el-card>
-      <el-card shadow="never" class="card-gap">
-        <div class="metric-label">今日订单</div>
-        <div class="metric">{{ overview?.orderCount ?? 0 }} <small>笔</small></div>
-        <div class="text-muted">商品 {{ overview?.itemCount ?? 0 }} 件，客单价 {{ overview?.avgOrderAmount ?? 0 }} 元</div>
-      </el-card>
-      <el-card shadow="never" class="card-gap">
-        <div class="metric-label">今日毛利</div>
-        <div class="metric money">{{ overview?.grossProfit ?? 0 }} <small>元</small></div>
-        <div class="text-muted">按销售时冻结的成本价计算</div>
-      </el-card>
-      <el-card shadow="never" class="card-gap">
-        <div class="metric-label">库存预警</div>
-        <div class="metric" :class="{ warn: lowStock.length > 0 }">{{ lowStock.length }} <small>个商品</small></div>
-        <div class="text-muted">低于各自补货阈值</div>
-      </el-card>
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-label"><el-icon><Money /></el-icon>今日净销售额</div>
+        <div class="stat-value money">{{ overview?.netAmount ?? 0 }} <small>元</small></div>
+        <div class="stat-sub">销售额 {{ overview?.salesAmount ?? 0 }}，退款 {{ overview?.refundAmount ?? 0 }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label"><el-icon><Tickets /></el-icon>今日订单</div>
+        <div class="stat-value">{{ overview?.orderCount ?? 0 }} <small>笔</small></div>
+        <div class="stat-sub">商品 {{ overview?.itemCount ?? 0 }} 件，客单价 {{ overview?.avgOrderAmount ?? 0 }} 元</div>
+      </div>
+      <div class="stat-card is-ok">
+        <div class="stat-label"><el-icon><TrendCharts /></el-icon>今日毛利</div>
+        <div class="stat-value money">{{ overview?.grossProfit ?? 0 }} <small>元</small></div>
+        <div class="stat-sub">按销售时冻结的成本价计算</div>
+      </div>
+      <div class="stat-card" :class="lowStock.length > 0 ? 'is-danger' : 'is-ok'">
+        <div class="stat-label"><el-icon><AlarmClock /></el-icon>库存预警</div>
+        <div class="stat-value" :class="{ warn: lowStock.length > 0 }">
+          {{ lowStock.length }} <small>个商品</small>
+        </div>
+        <div class="stat-sub">低于各自补货阈值</div>
+      </div>
     </div>
 
     <el-row :gutter="12">
@@ -142,33 +144,6 @@ watch(daily, renderChart)
 </script>
 
 <style scoped>
-.cards {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-}
-
-.metric-label {
-  color: #909399;
-  font-size: 13px;
-}
-
-.metric {
-  font-size: 26px;
-  font-weight: 700;
-  margin: 6px 0;
-}
-
-.metric small {
-  font-size: 13px;
-  font-weight: 400;
-  color: #909399;
-}
-
-.metric.warn {
-  color: #e6a23c;
-}
-
 .card-header {
   display: flex;
   align-items: center;

@@ -492,7 +492,13 @@ public class StewardInspectionService {
         if (mismatches.isEmpty()) {
             return null;
         }
-        StringBuilder detail = new StringBuilder("以下商品的批次数量之和与库存总数不一致，需要盘点修正（否则临期预警与成本核算都会失真）：");
+        StringBuilder detail = new StringBuilder("以下商品的批次数量之和与库存总数不一致。"
+                + "最常见的原因是历史库存（批次模型上线前的期初库存、或 SQL 直接写入的数据）没有批次，"
+                + "这会让临期预警与批次成本核算失真。修正办法（任选其一，改完用 GET /api/inventory/batch-mismatch 复核到返回空数组）："
+                + "\n· 对着货架做一次「库存管理 → 盘点调整」，把数量落到具体批次上"
+                + "\n· 或补一张「采购进货」单并确认入库，让新批次承接这部分库存"
+                + "\n· 整库升级场景可在低峰期重启一次后端：初始化流程会为这类期初库存补上「期初建账」批次"
+                + "\n明细：");
         for (Map<String, Object> row : mismatches) {
             detail.append("\n· ").append(row);
         }

@@ -23,23 +23,25 @@
       </div>
 
       <div ref="scrollBox" class="messages">
-        <div v-for="(message, index) in messages" :key="index" class="message">
-          <div class="question">
-            <el-icon><UserFilled /></el-icon>
-            <span>{{ message.question }}</span>
+        <div v-for="(message, index) in messages" :key="index" class="turn">
+          <div class="bubble-row right">
+            <div class="bubble question-bubble">{{ message.question }}</div>
+            <span class="avatar user-avatar"><el-icon><UserFilled /></el-icon></span>
           </div>
-          <div class="answer">
-            <div class="answer-head">
-              <el-icon><Service /></el-icon>
-              <el-tag size="small" :type="message.source === 'LLM' ? 'success' : 'info'">
-                {{ message.source === 'LLM' ? '大模型作答' : '本地规则作答' }}
-              </el-tag>
-              <el-tag v-for="tool in message.toolsUsed" :key="tool" size="small" type="warning">
-                {{ tool }}
-              </el-tag>
-              <span v-if="message.pending" class="pending">思考中…</span>
-            </div>
-            <pre class="answer-text">{{ message.answer }}</pre>
+
+          <div class="bubble-row left">
+            <span class="avatar bot-avatar"><el-icon><Service /></el-icon></span>
+            <div class="bubble answer-bubble">
+              <div class="answer-head">
+                <el-tag size="small" :type="message.source === 'LLM' ? 'success' : 'info'" effect="light">
+                  {{ message.source === 'LLM' ? '大模型作答' : '本地规则作答' }}
+                </el-tag>
+                <el-tag v-for="tool in message.toolsUsed" :key="tool" size="small" type="warning" effect="light">
+                  {{ tool }}
+                </el-tag>
+                <span v-if="message.pending" class="pending">思考中…</span>
+              </div>
+              <pre class="answer-text">{{ message.answer }}</pre>
 
             <!-- 工具轨迹：回答里的每个数字都能追到"查了哪个工具、查到什么" -->
             <el-collapse v-if="message.steps.length">
@@ -77,11 +79,12 @@
               </el-collapse-item>
             </el-collapse>
 
-            <!-- 建议卡片：把工具返回的结构化数据渲染成可读卡片 -->
-            <div v-if="message.cards.length" class="cards">
-              <el-card v-for="(card, cardIndex) in message.cards" :key="cardIndex" shadow="hover" class="data-card">
-                <FindingMetrics :metrics="card" />
-              </el-card>
+              <!-- 建议卡片：把工具返回的结构化数据渲染成可读卡片 -->
+              <div v-if="message.cards.length" class="cards">
+                <div v-for="(card, cardIndex) in message.cards" :key="cardIndex" class="data-card">
+                  <FindingMetrics :metrics="card" />
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -253,50 +256,97 @@ async function scrollToBottom() {
 }
 
 .messages {
-  max-height: 520px;
+  max-height: 560px;
   overflow-y: auto;
+  padding: 4px 2px 8px;
 }
 
-.message {
-  border-bottom: 1px dashed #e4e7ed;
-  padding: 10px 0;
+.turn {
+  margin-bottom: 18px;
 }
 
-.question {
+.bubble-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.bubble-row.right {
+  justify-content: flex-end;
+}
+
+.bubble {
+  max-width: 78%;
+  padding: 10px 14px;
+  line-height: 1.7;
+  font-size: 14px;
+}
+
+.question-bubble {
+  background: linear-gradient(135deg, var(--brand) 0%, #5b8bff 100%);
+  color: #fff;
+  border-radius: 14px 14px 4px 14px;
+  box-shadow: 0 6px 16px rgba(47, 107, 255, 0.22);
+}
+
+.answer-bubble {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px 14px 14px 4px;
+  box-shadow: var(--shadow-sm);
+  min-width: 0;
+  flex: 1;
+}
+
+.avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-weight: 600;
-  margin-bottom: 6px;
+  justify-content: center;
+  flex: 0 0 32px;
+}
+
+.user-avatar {
+  background: var(--brand-weak);
+  color: var(--brand-strong);
+}
+
+.bot-avatar {
+  background: linear-gradient(135deg, #161f33 0%, #33456b 100%);
+  color: #fff;
 }
 
 .answer-head {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   flex-wrap: wrap;
 }
 
 .pending {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-3);
 }
 
 .answer-text {
   white-space: pre-wrap;
   font-family: inherit;
-  background: #f5f7fa;
-  border-radius: 6px;
-  padding: 10px;
+  background: var(--surface-soft);
+  border-radius: var(--radius-sm);
+  padding: 12px;
   margin: 0 0 8px;
-  line-height: 1.7;
+  line-height: 1.75;
+  color: var(--text-1);
 }
 
 .observation {
   white-space: pre-wrap;
   font-size: 12px;
-  color: #606266;
+  color: var(--text-2);
   margin: 0;
   max-height: 160px;
   overflow-y: auto;
@@ -307,20 +357,29 @@ async function scrollToBottom() {
   font-size: 12px;
 }
 
+.trace {
+  margin-top: 4px;
+}
+
 .cards {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-top: 8px;
+  gap: 10px;
+  margin-top: 10px;
 }
 
 .data-card {
-  background: #fbfcfe;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
 }
 
 .input-row {
   display: flex;
   gap: 10px;
-  margin-top: 14px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
 }
 </style>

@@ -4,7 +4,13 @@
 --   MySQL：ENGINE/CHARSET、表内联 UNIQUE KEY / KEY、无 IF NOT EXISTS
 --   H2   ：CREATE INDEX IF NOT EXISTS（可重复执行，用于本地与 CI）
 -- 约定：所有业务表带 store_id（门店隔离）与 deleted（逻辑删除）；金额一律 DECIMAL(12,2)
+--
+-- SET NAMES utf8mb4 必须放在最前面：MySQL 8 容器的 mysql 客户端默认字符集是 latin1，
+-- 而本文件是 UTF-8 且带中文表注释（COMMENT '门店' 这种会真的写进 information_schema），
+-- 不声明就会把中文按 latin1 解析再转 utf8mb4 存进去 → 双重编码乱码。
 -- ============================================================================
+
+SET NAMES utf8mb4;
 
 CREATE TABLE IF NOT EXISTS store (
     id         BIGINT AUTO_INCREMENT PRIMARY KEY,

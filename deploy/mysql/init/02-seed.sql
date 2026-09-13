@@ -6,7 +6,13 @@
 --    这里全部交给自增，关联关系用子查询定位（MySQL 也允许引用其它表做子查询）。
 -- 2) 不写死密码哈希：管理员/收银员账号由 DemoDataInitializer 启动时用 BCrypt 生成，
 --    因为同一密码在不同机器上的哈希不同，写死会导致"SQL 灌了却登录不上"。
+-- 3) 第一行必须是 SET NAMES utf8mb4：MySQL 8 容器的客户端默认字符集是 latin1，
+--    docker-entrypoint 用同一个客户端加载本文件，会把文件里的 UTF-8 中文当成 latin1
+--    再转成 utf8mb4 存进去 —— 结果就是"农夫山泉"存成"å†œå¤«å±±æ³‰"这种双重编码乱码。
+--    （实测：不加这行时 product.name 的 HEX 是 C3A5E280A0...，加了之后是 E5869C...）
 -- ============================================================================
+
+SET NAMES utf8mb4;
 
 DELETE FROM sys_role_permission;
 DELETE FROM sys_role;
@@ -91,12 +97,26 @@ INSERT INTO inventory_flow (store_id, product_id, type, quantity, before_stock, 
 SELECT p.store_id, p.id, 'IN', p.stock, 0, p.stock, 'MANUAL', NULL, '期初建账', NULL, NOW(), 0
 FROM product p;
 
--- 保质期天数（饮料/零食追踪到期日，日用品不追踪）。
--- 说明：这里只设置商品档案上的保质期天数；由于期初库存是 SQL 直接写入的（没有走库存服务），
--- 它还不会生成批次。首次部署后请对这类商品做一次「盘点调整」或确认一张「采购单」，
--- 库存才会落到具体批次上，随后可用 GET /api/inventory/batch-mismatch 核对是否一致。
+-- 保质期天数（饮料/零食追踪到期日，日用品不追踪）
 UPDATE product SET shelf_life_days = 365 WHERE shelf_life_days IS NULL AND name LIKE '%农夫山泉%';
 UPDATE product SET shelf_life_days = 270 WHERE shelf_life_days IS NULL AND name LIKE '%可乐%';
 UPDATE product SET shelf_life_days = 270 WHERE shelf_life_days IS NULL AND name LIKE '%东方树叶%';
 UPDATE product SET shelf_life_days = 180 WHERE shelf_life_days IS NULL AND (name LIKE '%乐事%' OR name LIKE '%奥利奥%');
 UPDATE product SET shelf_life_days = 120 WHERE shelf_life_days IS NULL AND name LIKE '%沙琪玛%';
+
+-- 期初批次：让"批次数量之和 = 库存总数"从一开始就成立。
+-- 为什么要补：批次是后加的模型，SQL 直接写入的期初库存没有批次，门店第一次打开管家日报
+-- 就会看到「批次数量与库存总数对不上」——那是真问题，但演示数据不该自带问题（会让人以为系统坏了）。
+-- 到期日口径跟应用保持一致：没登记生产日期时按"入库日 + 保质期天数"推算，并在备注里留痕；
+-- 不追踪保质期的商品（日用品）不设到期日。
+INSERT INTO product_batch (store_id, product_id, batch_no, production_date, expiry_date, quantity,
+                           cost_price, purchase_order_id, remark, created_at, updated_at, deleted)
+SELECT p.store_id, p.id, CONCAT('BINIT-', p.id), NULL,
+       CASE WHEN p.shelf_life_days IS NULL THEN NULL
+            ELSE DATE_ADD(CURDATE(), INTERVAL p.shelf_life_days DAY) END,
+       p.stock, p.purchase_price, NULL,
+       CASE WHEN p.shelf_life_days IS NULL THEN '期初建账批次（不追踪保质期）'
+            ELSE '期初建账批次（未登记生产日期，按入库日 + 保质期推算到期日）' END,
+       NOW(), NOW(), 0
+FROM product p;
+
