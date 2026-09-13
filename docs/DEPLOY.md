@@ -1,9 +1,12 @@
 # 部署与运维
 
-## 0. 前置说明（先看这条）
+## 0. 前置说明
 
-`docker-compose.yml`、两个 `Dockerfile`、MySQL 初始化 SQL 都已就绪，但**开发机上没有安装 Docker**，
-因此这套编排**没有做过真机启动验证**——首次部署请按下面步骤逐项确认，特别是端口、密码与初始化脚本执行情况。
+`docker-compose.yml`、两个 `Dockerfile`、MySQL 初始化 SQL 都已就绪，并且**已由 CI 的 `e2e` job 真机验证过**：
+在 GitHub runner（自带 Docker）上构建镜像 → `docker compose up -d` → 等待 `/actuator/health` 通过 →
+通过 Nginx（80 端口）执行 `scripts/smoke-e2e.sh` 的 31 项端到端断言 → 无论成败都 `docker compose down -v` 清理。
+
+也就是说"能起来"这件事有 CI 记录可查；但**你机器上的端口占用、防火墙、密码策略仍需自行确认**，见下面第 7 节。
 
 ## 1. 准备
 
@@ -26,12 +29,18 @@ docker compose ps       # 四个容器都应是 healthy / running
 
 ## 3. 初始化发生了什么
 
-1. MySQL 首次启动执行：
-   - `deploy/mysql/init/01-schema.sql`（建表，MySQL 方言）
-   - 挂载进来的 `src/main/resources/db/data-demo.sql`（门店 + 分类 + 8 个演示商品 + 期初流水）
-2. 后端启动时 `DemoDataInitializer` 用 BCrypt 创建 `admin` / `cashier` 并绑定角色
-   （密码哈希不写进 SQL：不同机器同一密码的哈希不同，写死会导致"灌了数据却登录不上"）
+1. MySQL 首次启动执行 `deploy/mysql/init/` 下的脚本（按文件名字母序）：
+   - `01-schema.sql`：建表（MySQL 方言）
+   - `02-seed.sql`：演示门店 + 分类 + 8 个商品 + 期初库存流水
+   注意：这两个脚本**只在数据目录为空时执行一次**；已经有 `mysql-data` volume 时改脚本不会生效（见第 6 节升级说明）。
+2. 后端启动时 `DemoDataInitializer` 幂等补齐（**只增不改、不含 DELETE**）：
+   - 门店（按 code 判断）、角色与权限码、分类、演示商品（仅当门店没有任何商品时）
+   - `admin` / `cashier` 账号（BCrypt 哈希在运行时生成，不写死在 SQL 里）
 3. 后端定时任务默认每天 `00:10` 重算日汇总（`app.report.daily-summary-cron`）
+
+> 为什么演示数据有一部分在 Java 里：SQL 种子带 DELETE 时，Spring 每次新建上下文都会重跑它，
+> 在测试环境会把已有商品与库存流水删掉（只留下订单），造成"有销售、无流水"的假对账差异。
+> 这个坑在 CI 上真实出现过，所以改为 Java 幂等初始化，代码里也留了注释。
 
 ## 4. 环境变量
 

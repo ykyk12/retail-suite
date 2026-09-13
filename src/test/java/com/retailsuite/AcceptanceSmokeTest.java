@@ -164,7 +164,7 @@ class AcceptanceSmokeTest {
         assertEquals(rebuild1.path("netAmount").asText(), rebuild2.path("netAmount").asText(), "汇总重算必须幂等");
 
         JsonNode reconcile = call(HttpMethod.GET, "/api/reports/reconcile", token, null, 200);
-        // 对账左侧数据源（今天的 SALE 库存流水）必须可读；这条断言用来定位"差异行全是 flow=0"这类问题
+        // 对账左侧数据源（今天的 SALE 库存流水）必须可读：这条断言专门用来定位"差异行全是 flow=0"这类问题
         assertFalse(reportMapper.saleFlowQuantityByProduct(storeId,
                         today.atStartOfDay(), today.plusDays(1).atStartOfDay()).isEmpty(),
                 "应能从库存流水读到今天的 SALE 记录（对账的数据来源）");

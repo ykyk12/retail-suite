@@ -26,10 +26,11 @@ spring:
       connection-timeout: 5000
   sql:
     init:
+      # 只跑建表：演示数据改由 DemoDataInitializer 幂等写入
+      # （原来的 SQL 种子带 DELETE，会在每次新建 Spring 上下文时清掉已有数据，
+      #   在测试里会造成"库存流水被删、订单还在"的假差异——已在 CI 上踩到过）
       mode: always
       schema-locations: classpath:db/schema-h2.sql
-      data-locations: classpath:db/data-demo.sql
-      continue-on-error: false
   h2:
     console:
       enabled: true

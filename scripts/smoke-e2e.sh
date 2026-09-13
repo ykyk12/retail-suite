@@ -170,7 +170,9 @@ api POST "/api/ai/drafts/$SALE_DRAFT_ID/confirm" '{}' "$TOKEN"
 check "销售类草稿必须走收银台" 400 '.message | contains("收银台")'
 
 api POST /api/ai/assistant/ask '{"question":"今天卖了多少"}' "$TOKEN"
-check "经营助手回答营业额（只读工具）" 200 '.data.answer | contains("营业额") and (.data.toolsUsed | length >= 1)'
+# 注意 jq 的管道优先级：写成 `.data.answer | contains(...) and (.data.toolsUsed ...)` 时，
+# and 右侧的 `.` 已经被管道改成了字符串，断言会恒为假——必须给两个条件各加括号
+check "经营助手回答营业额（只读工具）" 200 '(.data.answer | contains("营业额")) and (.data.toolsUsed | length >= 1)'
 
 api POST /api/ai/assistant/ask '{"question":"帮我预测下个月的销量"}' "$TOKEN"
 check "助手答不了时说清能力边界" 200 '.data.answer | contains("我可以回答")'

@@ -25,12 +25,8 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-retail123456}
     volumes:
       - mysql-data:/var/lib/mysql
-      # 建表脚本：生产 DDL（MySQL 方言）
-      # 注意：这里不能加 :ro —— Docker 还要在这个目录里再挂载一个文件（下面的种子 SQL），
-      # 只读挂载会让它无法创建挂载点，报 "read-only file system"（已在 CI 上踩到过）
-      - ./deploy/mysql/init:/docker-entrypoint-initdb.d
-      # 演示数据直接挂载应用里那一份（方言中立），避免维护两份、改一处漏一处
-      - ./src/main/resources/db/data-demo.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+      # 建表 + 演示数据：只在容器首次初始化时执行（01-schema.sql → 02-seed.sql）
+      - ./deploy/mysql/init:/docker-entrypoint-initdb.d:ro
     ports:
       # 只暴露到本机，避免公网直接连数据库
       - "127.0.0.1:3306:3306"

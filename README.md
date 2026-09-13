@@ -103,7 +103,8 @@ docker compose up -d --build
 # 浏览器打开 http://localhost ，用 admin/admin123 登录
 ```
 
-- MySQL 首次启动执行 `deploy/mysql/init/01-schema.sql` 建表 + 挂载的演示数据脚本灌 8 个商品
+- MySQL 首次启动执行 `deploy/mysql/init/01-schema.sql`（建表）与 `02-seed.sql`（演示门店/分类/8 个商品/期初流水），只在容器首次初始化时跑一次
+- 账号与权限由后端启动时**幂等**创建（`DemoDataInitializer`：存在即跳过，不含任何 DELETE）
 - 数据存在具名 volume，`docker compose down` 不删数据；要清空加 `-v`
 - 想接大模型：在 `.env` 填 `AI_API_KEY`（不填也能用，AI 自动走本地规则解析）
 
@@ -213,7 +214,7 @@ CI 里跑的正是这条离线分支（10 个用例，含"答不了就说清能�
 | Redis | 已在依赖与 compose 里，但业务只用内存实现替代 | 预留做商品缓存与接口限流 |
 | 前端 | 只做 PC 端；收银台未做小键盘/触屏优化 | 移动端与扫码枪硬件适配待补 |
 | 打印 | 用浏览器打印（80mm CSS） | 直连小票打印机需本地打印服务 |
-| docker compose | 配置已就绪，但**开发机上没有 Docker，未做过真机验证** | 首次部署请按 `docs/DEPLOY.md` 逐项检查 |
+| docker compose | **已由 CI 的 e2e job 真机验证**：构建镜像 → 起 MySQL/Redis/后端/前端 → 等健康检查 → 通过 Nginx（80 端口）跑 31 项端到端冒烟 | 首次在你自己的机器上部署请按 `docs/DEPLOY.md` 检查端口与密码 |
 
 ## 10. 路线图
 

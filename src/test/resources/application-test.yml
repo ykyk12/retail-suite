@@ -12,7 +12,6 @@ spring:
     init:
       mode: always
       schema-locations: classpath:db/schema-h2.sql
-      data-locations: classpath:db/data-demo.sql
   h2:
     console:
       enabled: false
