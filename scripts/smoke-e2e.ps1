@@ -41,15 +41,21 @@ function Api($method, $path, $body, $token) {
     # （否则"重复确认入库被状态机拒绝"这类用例只会看到一句“远程服务器返回错误: (409)”。）
     $resp = $null
     $failMessage = $null
+    $psMajor = $PSVersionTable.PSVersion.Major
+    $invoke = @{ Method = $method; Uri = $uri; Headers = $headers }
     if ($body) {
         $json = $body | ConvertTo-Json -Depth 8 -Compress
-        $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
-        try { $resp = Invoke-WebRequest -Method $method -Uri $uri -Headers $headers -Body $bytes -UseBasicParsing }
-        catch { $resp = $_.Exception.Response; $failMessage = $_.Exception.Message }
-    } else {
-        try { $resp = Invoke-WebRequest -Method $method -Uri $uri -Headers $headers -UseBasicParsing }
-        catch { $resp = $_.Exception.Response; $failMessage = $_.Exception.Message }
+        $invoke.Body = [System.Text.Encoding]::UTF8.GetBytes($json)
     }
+    # 非 2xx 也要能读到错误正文（否则"重复确认入库被状态机拒绝"这类用例只会看到一句
+    # “远程服务器返回错误: (409)”，断言不出错误码）。两个版本的拿法不同：
+    #   · PowerShell 7：加 -SkipHttpErrorCheck，让它照常返回响应对象（抛异常时正文流已被释放，
+    #     取 $_.Exception.Response.Content 会报 "Cannot access a disposed object"）
+    #   · Windows PowerShell 5.1：没有这个开关，只能捕获异常并从 Response 里取正文
+    if ($psMajor -ge 7) { $invoke.SkipHttpErrorCheck = $true }
+    if ($psMajor -lt 6) { $invoke.UseBasicParsing = $true }
+    try { $resp = Invoke-WebRequest @invoke }
+    catch { $resp = $_.Exception.Response; $failMessage = $_.Exception.Message }
     if ($null -eq $resp) { throw "请求失败且拿不到响应（$failMessage）：$uri" }
 
     # 响应正文统一按 UTF-8 读（中文错误消息才不会变问号）。
