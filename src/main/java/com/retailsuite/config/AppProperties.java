@@ -53,6 +53,16 @@ public class AppProperties {
         /** 自然语言录入的草稿必须人工确认才落库；留着它是为了说明"这个值不允许被配成 false"。 */
         private boolean requireHumanConfirm = true;
 
+        // ---- 管家 Agent 运行时 ----
+        /** 单次对话最多几轮"模型 → 工具 → 模型" */
+        private int agentMaxSteps = 4;
+        /** 单个用户每分钟最多几次工具调用（防滥用与成本失控） */
+        private int agentMaxToolCallsPerMinute = 30;
+        /** 会话记忆保留多少轮 */
+        private int sessionMaxTurns = 12;
+        /** 会话闲置多久清理（分钟） */
+        private int sessionTtlMinutes = 120;
+
         public boolean llmConfigured() {
             return apiKey != null && !apiKey.isBlank() && baseUrl != null && !baseUrl.isBlank();
         }

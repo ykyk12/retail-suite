@@ -30,7 +30,8 @@ import java.util.Map;
 public class AiController {
 
     private final NlDraftService nlDraftService;
-    private final AssistantService assistantService;
+    /** 经营助手已统一由管家 Agent 运行时实现（工具/权限/审计/规则兜底一套代码） */
+    private final com.retailsuite.agent.runtime.AgentRuntime agentRuntime;
 
     @GetMapping("/capabilities")
     @RequiresPermission("ai:use")
@@ -72,9 +73,16 @@ public class AiController {
 
     @PostMapping("/assistant/ask")
     @RequiresPermission("ai:use")
-    @Operation(summary = "经营助手（只读问答：营业额/畅销/库存预警/单品库存/对账）",
-            description = "只挂只读工具，不产生任何写操作；未配置模型时走本地规则意图识别")
+    @Operation(summary = "经营助手问答（已由管家 Agent 运行时接管：同一套工具、权限、审计与规则兜底）",
+            description = "保留该路径以兼容旧版前端；新功能请用 /api/agent/chat（支持多轮会话与工具轨迹）")
     public ApiResponse<AiDtos.AskResponse> ask(@Valid @RequestBody AiDtos.AskRequest request) {
-        return ApiResponse.ok(assistantService.ask(UserContext.requireStoreId(), request.question()));
+        var user = UserContext.require();
+        com.retailsuite.agent.dto.AgentDtos.ChatResponse response = agentRuntime.chat(user, user.storeId(),
+                new com.retailsuite.agent.dto.AgentDtos.ChatRequest(null, request.question()));
+        List<String> steps = response.steps().stream()
+                .map(step -> "调用工具 " + step.tool() + " " + step.args() + " → " + step.observation())
+                .toList();
+        return ApiResponse.ok(new AiDtos.AskResponse(response.answer(), response.source(),
+                response.toolsUsed(), steps));
     }
 }

@@ -99,4 +99,30 @@ public interface ReportMapper {
     /** 商品名（对账结果展示用）。 */
     @Select("SELECT name FROM product WHERE id = #{productId}")
     String productName(@Param("productId") Long productId);
+
+    /** 单个商品在区间内的销量/销售额/成本（管家"单品画像"用）。 */
+    @Select("""
+            SELECT COALESCE(SUM(soi.quantity), 0) AS item_count,
+                   COALESCE(SUM(soi.amount), 0) AS sales_amount,
+                   COALESCE(SUM(soi.cost_price * soi.quantity), 0) AS cost_amount
+              FROM sale_order_item soi
+              JOIN sale_order so ON so.id = soi.order_id
+             WHERE so.store_id = #{storeId} AND so.deleted = 0 AND soi.deleted = 0
+               AND soi.product_id = #{productId}
+               AND so.created_at >= #{from} AND so.created_at < #{to}
+            """)
+    ReportDtos.AggregateRow salesOfProduct(@Param("storeId") Long storeId,
+                                           @Param("productId") Long productId,
+                                           @Param("from") LocalDateTime from,
+                                           @Param("to") LocalDateTime to);
+
+    /** 某商品最后一次售出时间（判断"多久没卖出去了"用）。 */
+    @Select("""
+            SELECT MAX(so.created_at)
+              FROM sale_order_item soi
+              JOIN sale_order so ON so.id = soi.order_id
+             WHERE so.store_id = #{storeId} AND so.deleted = 0 AND soi.deleted = 0
+               AND soi.product_id = #{productId}
+            """)
+    LocalDateTime lastSaleAt(@Param("storeId") Long storeId, @Param("productId") Long productId);
 }
