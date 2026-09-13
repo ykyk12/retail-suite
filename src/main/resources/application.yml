@@ -1,0 +1,103 @@
+server:
+  port: ${SERVER_PORT:8080}
+  servlet:
+    encoding:
+      charset: UTF-8
+      force: true
+
+spring:
+  application:
+    name: retail-suite
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  jackson:
+    default-property-inclusion: non_null
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+  datasource:
+    # 默认 dev：H2 文件库（MODE=MySQL），clone 下来不装 MySQL 也能直接跑，数据落在 ./data
+    url: jdbc:h2:file:./data/retailsuite;MODE=MySQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;AUTO_SERVER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 5000
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/schema-h2.sql
+      data-locations: classpath:db/data-demo.sql
+      continue-on-error: false
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 4
+          min-idle: 0
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    # 开发期打印 SQL：上线请关闭（生产配置在 application-prod.yml）
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    banner: false
+    db-config:
+      id-type: auto
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+# ============================================================================
+# 业务配置
+# ============================================================================
+app:
+  jwt:
+    # 生产必须用环境变量覆盖：至少 32 字节随机串
+    secret: ${JWT_SECRET:retail-suite-dev-secret-please-override-in-prod-32bytes}
+    # 访问令牌有效期（分钟）
+    access-token-minutes: 120
+    issuer: retail-suite
+  inventory:
+    # 库存低于该值的商品在预警列表中出现（可按商品覆盖 low_stock_threshold）
+    default-low-stock-threshold: 10
+  order:
+    # 单笔订单最多几个明细行（防误操作/恶意构造）
+    max-items-per-order: 200
+    # 幂等键保留天数（清理任务用）
+    idempotency-retention-days: 7
+  report:
+    # 日报汇总任务执行时间（分钟粒度 cron 用 @Scheduled(cron) 配置）
+    daily-summary-cron: "0 10 0 * * ?"
+  ai:
+    enabled: ${AI_ENABLED:true}
+    # 留空则只走本地规则解析（离线可用）；配置后走 OpenAI 兼容协议
+    base-url: ${AI_BASE_URL:https://api.deepseek.com}
+    api-key: ${AI_API_KEY:}
+    model: ${AI_MODEL:deepseek-chat}
+    timeout-seconds: 60
+    # 自然语言录入：草稿必须人工确认才落库（恒为 true，不允许配置成自动）
+    require-human-confirm: true
