@@ -106,16 +106,17 @@ docker compose logs -f backend | grep -E "Started|ERROR"
 | 临期页看到"批次与库存不符" | 老库存没有批次（升级前的历史数据）：走一次盘点、或确认一张采购单让新批次承接、或重启一次后端（初始化流程会补「期初建账」批次）；用 `GET /api/inventory/batch-mismatch` 复核到空数组为止 |
 | 一键转草稿提示没有权限 | 该动作走的是 Agent 写工具，需要 `purchase:write`；给角色加权限后重新登录（权限码写在令牌里） |
 | 导出 Excel 无响应 | 浏览器可能拦了下载；接口是带 Authorization 的 blob 下载，检查是否被代理去掉请求头 |
-| 端口 80 被占用 | 改 `docker-compose.yml` 里 frontend 的端口映射（如 `8081:80`） |
-| 启动报 `ports are not available ... 3306` | 本机已装 MySQL 占了 3306：把 compose 里 mysql 的映射改成 `127.0.0.1:13306:3306`（后端容器内仍连 `mysql:3306`，不受影响），或先停掉本机 MySQL |
+| 端口 80 被占用 | 在 `.env` 里写 `FRONTEND_HOST_PORT=8081`（或临时 `FRONTEND_HOST_PORT=8081 docker compose up -d`）——**宿主机端口全部可用环境变量覆盖，不必改 compose 文件** |
+| 启动报 `ports are not available ... 3306` | 本机已装 MySQL 占了 3306：`.env` 里写 `MYSQL_HOST_PORT=13306` 即可；容器之间仍走 `mysql:3306`，后端不受影响。同理 `BACKEND_HOST_PORT` / `REDIS_HOST_PORT` 也可覆盖 |
 | `docker pull` 卡住 / 超时（国内网络） | 到 Docker Hub 的连接常被重置：在 `~/.docker/daemon.json` 加 `registry-mirrors`（如 `https://docker.m.daocloud.io`），重启引擎后看 `docker info` 的 Registry Mirrors 是否出现 |
 | Git Bash（Windows）跑冒烟脚本失败 | 脚本已按 Git Bash 适配：正文走 stdin、变量名避开 Windows 的 `USERNAME`；若仍失败，先把 `jq` 与 `curl` 放进取 PATH（`SMOKE_USERNAME/SMOKE_PASSWORD` 可覆盖默认账号） |
+| Windows 版冒烟 `scripts/smoke-e2e.ps1` 报语法错误（中文变乱码） | 该文件必须保存为 **UTF-8 with BOM**：Windows PowerShell 5.1 会把无 BOM 的 .ps1 当 GBK 读，中文全乱导致解析失败。CI 里有一道守卫会拦截；本地修法：`$t=[IO.File]::ReadAllText($f,[Text.UTF8Encoding]::new($false)); [IO.File]::WriteAllText($f,$t,[Text.UTF8Encoding]::new($true))` |
 | 页面/接口里的中文变 `å†œå¤«å±±æ³‰` | 种子数据被**双重编码**：MySQL 8 容器的 mysql 客户端默认 `character_set_client=latin1`，而 `deploy/mysql/init/*.sql` 是 UTF-8，加载时中文先按 latin1 解析再转 utf8mb4 存库。已在两个初始化脚本开头加 `SET NAMES utf8mb4`（只对全新库生效）；**已有库**的这批旧数据建议重跑演示数据（`docker compose down -v` 再起）或按正确中文重录。应用自身经 JDBC 写入的数据一直是正确的，不受影响 |
 
 ## 8. 不进 Docker 的部署方式
 
-后端：`mvn -DskipTests package` 得到 `target/retail-suite-1.5.0.jar`，
-`SPRING_PROFILES_ACTIVE=prod MYSQL_HOST=... JWT_SECRET=... java -jar retail-suite-1.5.0.jar`
+后端：`mvn -DskipTests package` 得到 `target/retail-suite-1.5.1.jar`，
+`SPRING_PROFILES_ACTIVE=prod MYSQL_HOST=... JWT_SECRET=... java -jar retail-suite-1.5.1.jar`
 
 前端：`cd frontend && npm ci && npm run build`，把 `dist/` 交给任意 Nginx/Apache，
 并把 `/api` 反代到后端（配置参考 `frontend/nginx.conf`）。

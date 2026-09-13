@@ -36,15 +36,34 @@ function Api($method, $path, $body, $token) {
     $headers = @{ "Content-Type" = "application/json" }
     if ($token) { $headers["Authorization"] = "Bearer $token" }
     $uri = "$BaseUrl$path"
+    # 注意：Windows PowerShell 5.1 在非 2xx 时会**抛异常**（没有 PS7 的 -SkipHttpErrorCheck），
+    # 抛出的异常里其实带着响应体。这里统一把它取回来，才能断言错误码与错误消息
+    # （否则"重复确认入库被状态机拒绝"这类用例只会看到一句“远程服务器返回错误: (409)”。）
+    $resp = $null
+    $failMessage = $null
     if ($body) {
         $json = $body | ConvertTo-Json -Depth 8 -Compress
         $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
-        $resp = Invoke-WebRequest -Method $method -Uri $uri -Headers $headers -Body $bytes -UseBasicParsing
+        try { $resp = Invoke-WebRequest -Method $method -Uri $uri -Headers $headers -Body $bytes -UseBasicParsing }
+        catch { $resp = $_.Exception.Response; $failMessage = $_.Exception.Message }
     } else {
-        $resp = Invoke-WebRequest -Method $method -Uri $uri -Headers $headers -UseBasicParsing
+        try { $resp = Invoke-WebRequest -Method $method -Uri $uri -Headers $headers -UseBasicParsing }
+        catch { $resp = $_.Exception.Response; $failMessage = $_.Exception.Message }
     }
-    $text = [System.Text.Encoding]::UTF8.GetString($resp.RawContentStream.ToArray())
-    $obj = $text | ConvertFrom-Json
+    if ($null -eq $resp) { throw "请求失败且拿不到响应（$failMessage）：$uri" }
+
+    # 响应正文统一按 UTF-8 读（中文错误消息才不会变问号）
+    if ($resp -is [System.Net.HttpWebResponse]) {
+        $stream = $resp.GetResponseStream()
+    } else {
+        $stream = $resp.RawContentStream
+    }
+    $buffer = New-Object System.IO.MemoryStream
+    $stream.CopyTo($buffer)
+    $text = [System.Text.Encoding]::UTF8.GetString($buffer.ToArray())
+    $obj = $null
+    try { $obj = $text | ConvertFrom-Json } catch { }
+    if ($null -eq $obj) { throw "响应不是合法 JSON（$failMessage）：$text" }
     if ($obj.success -eq $false) { throw "$($obj.code): $($obj.message)" }
     return $obj.data
 }
@@ -84,8 +103,12 @@ Step "新建商品（期初库存 5）" {
 }
 
 Step "库存流水写入了期初建库（库存不是凭空来的）" {
-    $flows = Api "GET" "/api/inventory/flows/$productId?limit=10" $null $token
-    if ($flows.Count -lt 1) { throw "没有流水记录" }
+    # 必须写 ${productId}：PowerShell 里变量名允许包含 ?，
+    # 写成 "$productId?limit=10" 会被解析成变量 $productId?limit → 拼出 /flows/=10（后端直接 500）
+    $flows = Api "GET" "/api/inventory/flows/${productId}?limit=10" $null $token
+    # 用 @(...) 包一层：Windows PowerShell 5.1 会把"只有一个元素的 JSON 数组"解包成单个对象，
+    # 而单对象没有 .Count 属性（取到 $null），直接写 $flows.Count -lt 1 会误判成"没有流水记录"
+    if (@($flows).Count -lt 1) { throw "没有流水记录" }
     return $true
 }
 

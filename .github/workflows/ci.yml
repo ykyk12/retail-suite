@@ -96,6 +96,21 @@ jobs:
       - name: Smoke test through Nginx (port 80)
         run: BASE_URL=http://127.0.0.1 bash scripts/smoke-e2e.sh
 
+      # Windows 用户用的是 PowerShell 脚本：以前它从没在真机跑过，一跑就暴露了 4 个问题
+      # （$var? 被当成变量名、PS 5.1 读不到非 2xx 的响应体、单元素 JSON 数组的 .Count、
+      #   以及中文 .ps1 少了 UTF-8 BOM 会被 PS 5.1 按 GBK 读）。这里在 CI 里也跑一遍，
+      # 保证它不会重新变成"从没被执行过的脚本"。
+      - name: Smoke test with the Windows PowerShell script
+        run: pwsh -NoProfile -File scripts/smoke-e2e.ps1 -BaseUrl http://localhost
+
+      - name: Verify PowerShell script keeps its UTF-8 BOM
+        run: |
+          if ! head -c 3 scripts/smoke-e2e.ps1 | od -An -tx1 | grep -qi "ef bb bf"; then
+            echo "::error::scripts/smoke-e2e.ps1 缺少 UTF-8 BOM：Windows PowerShell 5.1 会把中文按 GBK 读，导致语法错误而非友好报错"
+            exit 1
+          fi
+          echo "BOM 正常"
+
       - name: Dump container logs on failure
         if: failure()
         run: docker compose logs --tail=300

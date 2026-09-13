@@ -3,7 +3,7 @@
 > 一句话：**给小微零售店用的进销存 + 收银系统**——进货登记、库存与预警、扫码收银、退货、日报与对账，一套跑起来就能用。
 > 技术：Spring Boot 3 + MyBatis-Plus + MySQL 8 + Redis + JWT · Vue 3 + TypeScript + Element Plus + ECharts
 
-当前版本 **1.5.0**：后端 73 个自动化测试（含 22 条规则兜底评测用例）、前端类型检查与构建、CI 三个 job 全绿（含 docker compose 全栈冒烟 42 项）；`docker compose up -d --build` 一键起全栈（MySQL + Redis + 后端 + Nginx 前端）。已在 Windows 11 + Docker Desktop（WSL2 后端）实机跑通 42/42。
+当前版本 **1.5.1**：后端 73 个自动化测试（含 22 条规则兜底评测用例）、前端类型检查与构建、CI 三个 job 全绿（含 docker compose 全栈冒烟 42 项）；`docker compose up -d --build` 一键起全栈（MySQL + Redis + 后端 + Nginx 前端）。已在 Windows 11 + Docker Desktop（WSL2 后端）实机跑通 42/42。
 
 ---
 
@@ -266,6 +266,7 @@ Agent 的危险不在于答错，而在于**它有权改你的账**。所以约�
 
 | 版本 | 说明 |
 |---|---|
+| 1.5.1 | 收尾：宿主机端口全部参数化（`FRONTEND_HOST_PORT` / `BACKEND_HOST_PORT` / `MYSQL_HOST_PORT` / `REDIS_HOST_PORT`，本机 3306 被占也不用再维护一份 compose 副本）；Windows 版冒烟脚本首次真机跑通并修 4 个坑（`$var?` 被当成变量名、PS 5.1 读不到非 2xx 的响应体、单元素 JSON 数组的 `.Count`、中文 .ps1 缺 UTF-8 BOM），并纳入 CI（含 BOM 守卫）；`shortlink-agent` 去掉硬编码的 DeepSeek Key 默认值 |
 | 1.5.0 | 界面全面美化：抽出全站设计变量（配色/圆角/阴影/间距）并统一覆盖 Element Plus 主题，侧边栏与顶栏重做（品牌标、选中态胶囊、门店与账号信息区）、看板换成分区指标卡、管家对话改成气泡式（左右分列 + 头像 + 固定输入区）；修复实机暴露的两个数据问题：**种子中文双重编码**（MySQL 容器客户端默认 latin1 → 初始化脚本加 `SET NAMES utf8mb4`）、**期初库存没有批次**导致首装就报账实不符（初始化流程自动补「期初建账」批次，并把该发现的文案改成可照做的修正步骤） |
 | 1.4.1 | Windows/Git Bash 实机适配：冒烟脚本请求体改走 stdin（命令行参数会被 MSYS2 按 ANSI 转码，中文变 GBK 导致服务端 `Invalid UTF-8 middle byte`）、账号变量改名避开 Windows 的 `USERNAME`、jq 取值剥 CR；`docs/DEPLOY.md` 补国内网络与端口占用的排查项。已在 Windows 11 + Docker Desktop(WSL2) 实机跑通 compose 全栈 42/42 |
 | 1.4.0 | 规则兜底评测集（22 条用例表驱动，含"答不了要说清边界"与"永不自动下单"）；管家新会话接口 `POST /api/agent/session/reset`（不带 sessionId 是"接着聊"，前端光丢本地 id 清不掉上下文）；修复批次号同秒重复导致唯一索引冲突（后缀 4 位 → 8 位 + 冲突重试）、"客单价"被误判成商品名、"按毛利排行"被当成单品查询；e2e 冒烟扩到 42 项 |
