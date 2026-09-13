@@ -222,6 +222,8 @@ CREATE TABLE IF NOT EXISTS ai_draft (
     raw_text       VARCHAR(1000),
     parsed_json    VARCHAR(4000),
     status         VARCHAR(16) NOT NULL,
+    -- 解析来源：LLM 或 RULE（本地规则），用来对比两种解析方式的准确率
+    source         VARCHAR(16),
     created_by     BIGINT,
     confirmed_by   BIGINT,
     created_ref_no VARCHAR(64),
