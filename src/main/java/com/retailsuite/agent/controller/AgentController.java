@@ -53,6 +53,15 @@ public class AgentController {
         return ApiResponse.ok(toolRegistry.describe(UserContext.require()));
     }
 
+    @PostMapping("/session/reset")
+    @RequiresPermission("ai:use")
+    @Operation(summary = "开一个新会话（清掉当前上下文）",
+            description = "不带 sessionId 的请求是「接着上次聊」，所以前端光丢掉本地 sessionId 清不掉上下文，必须调这个接口")
+    public ApiResponse<Map<String, Object>> resetSession() {
+        var user = UserContext.require();
+        return ApiResponse.ok(Map.of("sessionId", agentRuntime.resetSession(user.userId())));
+    }
+
     public record ChatRequest(
             @Size(max = 64, message = "sessionId 过长")
             String sessionId,

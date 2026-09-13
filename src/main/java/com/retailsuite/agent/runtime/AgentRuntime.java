@@ -89,6 +89,11 @@ public class AgentRuntime {
                 response.toolsUsed(), response.steps(), response.cards());
     }
 
+    /** 开一个新会话（清掉该用户当前上下文）。 */
+    public String resetSession(Long userId) {
+        return sessionStore.reset(userId);
+    }
+
     /** 模型路径；任何一步不可用（未配置/网络失败/非法 JSON）都返回 empty 交给规则兜底。 */
     private Optional<AgentDtos.ChatResponse> chatWithLlm(AuthUser user, Long storeId,
                                                         AgentSessionStore.AgentSession session, String question) {

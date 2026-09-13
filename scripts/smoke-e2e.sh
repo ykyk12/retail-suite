@@ -197,6 +197,12 @@ check "管家对话：调用工具并给出保质期结论" 200 '(.data.toolsUse
 api POST /api/agent/chat '{"question":"帮我看看库存够不够卖"}' "$TOKEN"
 check "管家对话：多轮会话返回 sessionId" 200 '.data.sessionId | length > 0'
 
+api POST /api/agent/session/reset "" "$TOKEN"
+check "管家：开新会话清上下文" 200 '.data.sessionId | length > 0'
+
+api POST /api/agent/chat '{"question":"帮我预测下个月的销量"}' "$TOKEN"
+check "管家：答不了时说清能力边界且不乱调工具" 200 '(.data.answer | contains("我可以回答")) and (.data.toolsUsed | length == 0)'
+
 api POST /api/steward/inspect "" "$TOKEN"
 check "手动巡检生成日报（一句话总结 + 结构化发现）" 200 '(.data.headline | length > 10) and (.data.findings | type == "array")'
 

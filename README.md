@@ -3,7 +3,7 @@
 > 一句话：**给小微零售店用的进销存 + 收银系统**——进货登记、库存与预警、扫码收银、退货、日报与对账，一套跑起来就能用。
 > 技术：Spring Boot 3 + MyBatis-Plus + MySQL 8 + Redis + JWT · Vue 3 + TypeScript + Element Plus + ECharts
 
-当前版本 **1.3.0**：后端 70 个自动化测试、前端类型检查与构建、CI 三个 job 全绿（含 docker compose 全栈冒烟 40 项）；`docker compose up -d --build` 一键起全栈（MySQL + Redis + 后端 + Nginx 前端）。
+当前版本 **1.4.0**：后端 73 个自动化测试（含 22 条规则兜底评测用例）、前端类型检查与构建、CI 三个 job 全绿（含 docker compose 全栈冒烟 42 项）；`docker compose up -d --build` 一键起全栈（MySQL + Redis + 后端 + Nginx 前端）。
 
 ---
 
@@ -216,7 +216,7 @@ Agent 的危险不在于答错，而在于**它有权改你的账**。所以约�
 | 收银 | `POST /api/sales/checkout`、`POST /api/sales/{id}/refund`、`GET /api/sales` | `sale:create` / `refund:create` / `sale:read` |
 | 报表 | `GET /api/reports/overview`、`/daily`、`/top-products`、`/reconcile`、`POST /daily/{date}/rebuild`、`GET /export/daily` | `report:read` |
 | AI 录单 | `POST /api/ai/drafts`、`POST /{id}/confirm`、`GET /api/ai/drafts` | `ai:use` |
-| 管家 Agent | `POST /api/agent/chat`（多轮 + 工具轨迹 + 建议卡片）、`GET /api/agent/tools`（当前账号可用工具）；旧路径 `POST /api/ai/assistant/ask` 保留兼容 | `ai:use` |
+| 管家 Agent | `POST /api/agent/chat`（多轮 + 工具轨迹 + 建议卡片）、`GET /api/agent/tools`（当前账号可用工具）、`POST /api/agent/session/reset`（开新会话清上下文）；旧路径 `POST /api/ai/assistant/ask` 保留兼容 | `ai:use` |
 | 管家巡检 | `POST /api/steward/inspect`（立即巡检）、`GET /api/steward/reports/latest`、`GET /api/steward/reports`、`GET /api/steward/reports/{id}` | `report:read` |
 | 巡检动作 | `POST /api/steward/reports/{id}/findings/{code}/actions`（一键生成采购单草稿） | `ai:use` + 工具级 `purchase:write` |
 
@@ -226,7 +226,7 @@ Agent 的危险不在于答错，而在于**它有权改你的账**。所以约�
 
 最近一次 CI（三个 job 全绿：后端单测 + 前端构建 + docker compose 全栈冒烟）：
 
-- **后端** `mvn verify`：**70 个测试**
+- **后端** `mvn verify`：**73 个测试**
   - `AuthFlowTest`(8)：登录、错误密码不泄漏用户名是否存在、篡改签名被拒、未登录 401、收银员越权 403、参数校验
   - `ProductInventoryTest`(9)：**30 线程并发扣 10 件库存不超卖**、流水 before/after 自洽、库存不足不改数据、盘点需原因、跨门店不可见
   - `BatchExpiryTest`(6)：批次入库、FEFO 先到期先出、临期/过期查询、到期日缺失按保质期推算并留痕、批次与库存对不上能被自查出来
@@ -235,6 +235,7 @@ Agent 的危险不在于答错，而在于**它有权改你的账**。所以约�
   - `ReportFlowTest`(6)：毛利口径（含退款成本）、汇总幂等且与实时口径一致、TOP 商品、对账发现人为差异、Excel 真实字节流
   - `AgentRuntimeTest`(9)：工具注册与只读标记、收银员看不到进货工具、越权直接拒绝、**采购草稿不动库存**、会话记忆与裁剪、规则兜底与能力边界
   - `StewardInspectionTest`(6)：发现过期/临期批次与压货金额、补货建议一键转草稿**且库存不变**、无进货权限账号点不动、同一天重复巡检是覆盖不是新增、滞销与负毛利识别、报告跨门店不可见
+  - `AgentEvalTest`(3)：**规则兜底评测集**——22 条门店常见问法（营业额/排行/单品/临期/断货/补货/滞销/毛利异常/对账/能力边界）逐条断言"路由到哪个工具、答到点上没有"，外加"规则路径永不自动下单"与多轮会话上下文隔离
   - `AiModuleTest`(10)：规则解析（含条码与多行）、未识别不瞎猜、确认生成采购单但不动库存、销售草稿被拒、助手问答与能力边界
   - `AcceptanceSmokeTest`(3)：HTTP 层全链路（登录 → 建商品 → 进货 → 收银 → 退货 → 对账 → 管家问答）
 - **前端**：`npm run type-check`（vue-tsc 0 错误）+ `npm run build`（产出 dist 并上传 artifact）
@@ -265,6 +266,7 @@ Agent 的危险不在于答错，而在于**它有权改你的账**。所以约�
 
 | 版本 | 说明 |
 |---|---|
+| 1.4.0 | 规则兜底评测集（22 条用例表驱动，含"答不了要说清边界"与"永不自动下单"）；管家新会话接口 `POST /api/agent/session/reset`（不带 sessionId 是"接着聊"，前端光丢本地 id 清不掉上下文）；修复批次号同秒重复导致唯一索引冲突（后缀 4 位 → 8 位 + 冲突重试）、"客单价"被误判成商品名、"按毛利排行"被当成单品查询；e2e 冒烟扩到 42 项 |
 | 1.3.0 | 前端补齐管家能力：管家对话页（多轮会话 + 工具轨迹表 + 结构化建议卡片）、临期与批次页（临期/过期/批次不符三个视角 + 下架报损）、管家日报页（严重度排序 + 明细卡片 + 一键转采购草稿）、商品与采购单的保质期/生产日期字段；架构与部署文档同步（批次模型、Agent 与巡检架构、v1.2.0 迁移与故障排查） |
 | 1.2.0 | 管家主动巡检：每天开门前自动巡检（过期/临期/断货/补货/滞销/毛利异常/账实不符/批次不符）→ 结构化日报落库 → 补货建议一键转采购草稿；新增毛利异常工具（第 10 个工具）；补货与滞销口径抽成单一口径服务（对话与日报结论必然一致）；e2e 冒烟扩到 40 项 |
 | 1.1.0 | 批次与保质期：批次台账（进价/生产日/到期日）、FEFO 先到期先出、过期报损、临期汇总；管家 Agent：9 个声明式工具 + 权限过滤 + 限流 + 审计 + 多轮会话 + 规则兜底，写操作只出草稿；旧助手接口统一由 Agent 运行时接管；e2e 冒烟扩到 31 项 |

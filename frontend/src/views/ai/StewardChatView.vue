@@ -208,8 +208,9 @@ async function ask(preset?: string) {
   }
 }
 
-function resetSession() {
-  sessionId.value = undefined
+async function resetSession() {
+  const created = await agentApi.resetSession()
+  sessionId.value = created.sessionId
   messages.value = []
   ElMessage.success('已开始新会话（管家不再记得上一轮上下文）')
 }

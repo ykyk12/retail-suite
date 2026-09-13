@@ -57,7 +57,10 @@ public class RuleIntentRouter {
             cards.add(run.outcome().data());
         }
         if (!run.outcome().success() && intent.guessed()) {
-            return capability(user, storeId, question, "没找到匹配的商品，换个说法（给商品名或条码）就行");
+            // 猜商品名的路径失败时，仍然把"我试过什么工具、用什么关键词查的"带回去：
+            // 用户能一眼看出是不是自己把商品名说错了（而不是以为管家坏了）
+            return capability(user, storeId, question, "没找到匹配的商品，换个说法（给商品名或条码）就行",
+                    List.of(run.step()), List.of(intent.tool()));
         }
         String answer = run.outcome().success()
                 ? intent.header() + "\n" + run.outcome().summary()
@@ -66,10 +69,15 @@ public class RuleIntentRouter {
     }
 
     public AgentDtos.ChatResponse capability(AuthUser user, Long storeId, String question) {
-        return capability(user, storeId, question, null);
+        return capability(user, storeId, question, null, List.of(), List.of());
     }
 
     private AgentDtos.ChatResponse capability(AuthUser user, Long storeId, String question, String prefix) {
+        return capability(user, storeId, question, prefix, List.of(), List.of());
+    }
+
+    private AgentDtos.ChatResponse capability(AuthUser user, Long storeId, String question, String prefix,
+                                             List<AgentDtos.ToolCallStep> steps, List<String> toolsUsed) {
         String answer = (prefix == null ? "" : prefix + "\n\n") + """
                 我可以回答这些问题，也可以帮你把这些事处理掉（下面每条都能给出具体数字与依据）：
                 · 经营概况：今天/昨天/本周卖了多少、毛利多少、客单价多少
@@ -81,7 +89,7 @@ public class RuleIntentRouter {
                 · 对账：销售数量与库存出库是否一致
                 说清"你要看什么 + 时间范围（可选）+ 商品名（可选）"就行。
                 另外我每天开门前会主动巡检一遍，把过期、临期、断货、滞销、毛利异常、账实不符整理成日报等你过目。""";
-        return new AgentDtos.ChatResponse(null, answer, "RULE", List.of(), List.of(), List.of());
+        return new AgentDtos.ChatResponse(null, answer, "RULE", toolsUsed, steps, List.of());
     }
 
     /**
@@ -89,6 +97,10 @@ public class RuleIntentRouter {
      * 例如"临期"必须先于"库存"，否则"哪些临期商品还有多少"会被误判成普通库存查询。
      */
     private Intent detect(String text) {
+        // "客单价" 必须早于含 "单价" 的库存/单品分支，否则会被当成"某个叫客的商品"
+        if (text.contains("客单价")) {
+            return new Intent("sales_summary", "经营概况：", Map.of("period", periodOf(text)), false);
+        }
         if (containsAny(text, "临期", "保质期", "到期", "过期", "快到期", "效期", "还能卖多久")) {
             return new Intent("expiry_alert", "保质期检查结果：", Map.of("days", 30), false);
         }
@@ -108,6 +120,10 @@ public class RuleIntentRouter {
             return new Intent("margin_alert", "毛利异常检查：", Map.of("days", 30), false);
         }
         if (containsAny(text, "毛利", "利润", "赚", "成本")) {
+            // "按毛利排行 / 毛利最高的商品"是排行问题，不能当成"某个叫毛利的商品"去查单品画像
+            if (containsAny(text, "排行", "排名", "最好", "最高", "top", "前几", "最赚")) {
+                return new Intent("sales_ranking", "毛利排行：", Map.of("metric", "grossProfit", "days", 30), false);
+            }
             String keyword = keywordOf(text);
             if (!keyword.isBlank()) {
                 return new Intent("product_profile", "商品「" + keyword + "」的进货与利润情况：",
@@ -128,6 +144,12 @@ public class RuleIntentRouter {
         }
         if (containsAny(text, "营业额", "销售额", "卖了多少", "收入", "客单价", "今天", "昨天", "本周", "本月", "干了多少")) {
             return new Intent("sales_summary", "经营概况：", Map.of("period", periodOf(text)), false);
+        }
+        // 能力边界（放在所有业务意图之后、猜商品名之前）：这些问法我们确实答不了，
+        // 明确说清"我能做什么"，而不是拿"下个月/写首诗"去当商品名瞎查一次库存
+        if (containsAny(text, "预测", "预估", "预计", "下个月", "下季度", "明年", "未来趋势",
+                "写一首", "写首诗", "讲个笑话", "翻译成")) {
+            return new Intent("__unknown__", "", Map.of(), true);
         }
         String keyword = keywordOf(text);
         if (!keyword.isBlank()) {

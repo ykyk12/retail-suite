@@ -122,7 +122,9 @@ export const aiApi = {
 export const agentApi = {
   chat: (question: string, sessionId?: string) =>
     http.post<AgentChatResponse>('/agent/chat', sessionId ? { question, sessionId } : { question }),
-  tools: () => http.get<AgentToolInfo[]>('/agent/tools')
+  tools: () => http.get<AgentToolInfo[]>('/agent/tools'),
+  /** 开新会话：不带 sessionId 的请求是"接着上次聊"，所以必须让服务端清上下文 */
+  resetSession: () => http.post<{ sessionId: string }>('/agent/session/reset')
 }
 
 /** 管家巡检日报：主动发现问题 + 一键转采购草稿 */

@@ -174,7 +174,6 @@ public class InventoryService {
         ProductBatch batch = new ProductBatch();
         batch.setStoreId(storeId);
         batch.setProductId(product.getId());
-        batch.setBatchNo(Ids.batchNo());
         batch.setProductionDate(production);
         batch.setExpiryDate(expiry);
         batch.setQuantity(quantity);
@@ -185,7 +184,21 @@ public class InventoryService {
         batch.setCreatedAt(LocalDateTime.now());
         batch.setUpdatedAt(LocalDateTime.now());
         batch.setDeleted(0);
-        batchMapper.insert(batch);
+
+        // 批次号是"时间 + 随机后缀"，理论上仍可能撞上唯一索引（uk_batch_store_no）。
+        // 撞了就换一个号重试，而不是把整笔入库事务拖失败——用户看到的是"入库成功"，不是一句数据库报错。
+        for (int attempt = 1; ; attempt++) {
+            batch.setBatchNo(Ids.batchNo());
+            try {
+                batchMapper.insert(batch);
+                break;
+            } catch (org.springframework.dao.DuplicateKeyException e) {
+                if (attempt >= 3) {
+                    throw e;
+                }
+                log.warn("批次号冲突，重新生成（第 {} 次）storeId={} batchNo={}", attempt, storeId, batch.getBatchNo());
+            }
+        }
         log.info("入库批次建立 storeId={} productId={} batchNo={} 数量={} 到期日={}",
                 storeId, product.getId(), batch.getBatchNo(), quantity, expiry);
         return batch.getId();
