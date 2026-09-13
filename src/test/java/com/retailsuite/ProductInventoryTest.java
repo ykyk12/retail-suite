@@ -111,8 +111,9 @@ class ProductInventoryTest {
         List<InventoryDtos.FlowView> flows = inventoryService.recentFlows(storeId, product.id(), 200);
         long outCount = flows.stream().filter(f -> "OUT".equals(f.type())).count();
         assertEquals(stock, outCount, "每次成功扣减都必须留下一条流水");
-        assertTrue(flows.stream().allMatch(f -> f.afterStock() == f.beforeStock() - Math.abs(f.quantity())),
-                "流水的 before/after 必须自洽");
+        // 流水不变量：after = before + quantity（quantity 带符号：入库为正、出库为负）
+        assertTrue(flows.stream().allMatch(f -> f.afterStock() == f.beforeStock() + f.quantity()),
+                "流水的 before/after 必须自洽：" + flows);
     }
 
     @Test
