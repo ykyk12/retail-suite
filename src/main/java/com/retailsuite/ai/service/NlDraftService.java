@@ -134,13 +134,12 @@ public class NlDraftService {
                 request == null || request.remark() == null ? "由自然语言录入生成" : request.remark(),
                 purchaseItems));
 
-        AiDraft update = new AiDraft();
-        update.setId(draft.getId());
-        update.setStatus(AiDraft.STATUS_CONFIRMED);
-        update.setConfirmedBy(UserContext.currentUserId());
-        update.setCreatedRefNo(order.orderNo());
-        update.setUpdatedAt(LocalDateTime.now());
-        draftMapper.updateById(update);
+        // 直接在已加载实体上改状态再更新：避免"数据库改了、返回给前端的对象还是旧状态"这种不一致
+        draft.setStatus(AiDraft.STATUS_CONFIRMED);
+        draft.setConfirmedBy(UserContext.currentUserId());
+        draft.setCreatedRefNo(order.orderNo());
+        draft.setUpdatedAt(LocalDateTime.now());
+        draftMapper.updateById(draft);
 
         auditService.record("AI_DRAFT_CONFIRM", "ai_draft", String.valueOf(draft.getId()),
                 "生成采购单 " + order.orderNo() + "，明细 " + purchaseItems.size() + " 行");
@@ -154,11 +153,9 @@ public class NlDraftService {
         if (!AiDraft.STATUS_PENDING.equals(draft.getStatus())) {
             throw new BizException(ErrorCode.CONFLICT, "草稿已处理过，不能重复作废");
         }
-        AiDraft update = new AiDraft();
-        update.setId(draft.getId());
-        update.setStatus(AiDraft.STATUS_DISCARDED);
-        update.setUpdatedAt(LocalDateTime.now());
-        draftMapper.updateById(update);
+        draft.setStatus(AiDraft.STATUS_DISCARDED);
+        draft.setUpdatedAt(LocalDateTime.now());
+        draftMapper.updateById(draft);
         auditService.record("AI_DRAFT_DISCARD", "ai_draft", String.valueOf(draft.getId()), "人工作废草稿");
     }
 

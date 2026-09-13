@@ -94,7 +94,8 @@ class AiModuleTest {
 
     @Test
     void 支持条码识别与多行解析() {
-        ProductDtos.View product = createProduct("AI测试饼干", 0, "9.00", "5.00");
+        // 用真实的 13 位纯数字条码（EAN-13 就是纯数字），解析器只提取数字段
+        ProductDtos.View product = createProductWithNumericBarcode("AI测试饼干", 0, "9.00", "5.00");
 
         List<ChineseOrderParser.ParsedItem> parsed = parser.parse(
                 product.barcode() + " 20 个 单价 5.5，另 进了 3 袋" + product.name());
@@ -223,6 +224,15 @@ class AiModuleTest {
     private ProductDtos.View createProduct(String name, int initStock, String salePrice, String purchasePrice) {
         return productService.create(storeId, new ProductDtos.CreateRequest(name, null,
                 "BAR-" + System.nanoTime(), "规格", "件",
+                new BigDecimal(purchasePrice), new BigDecimal(salePrice), initStock, 10));
+    }
+
+    /** 纯数字 13 位条码（EAN-13 风格）：用于验证条码识别路径。 */
+    private ProductDtos.View createProductWithNumericBarcode(String name, int initStock,
+                                                             String salePrice, String purchasePrice) {
+        String barcode = "69" + String.format("%011d", Math.abs(System.nanoTime() % 100_000_000_000L));
+        return productService.create(storeId, new ProductDtos.CreateRequest(name, null,
+                barcode, "规格", "件",
                 new BigDecimal(purchasePrice), new BigDecimal(salePrice), initStock, 10));
     }
 }
