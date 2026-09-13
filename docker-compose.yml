@@ -1,0 +1,91 @@
+# 云小店一键起全栈：MySQL + Redis + 后端 + 前端（Nginx）
+#
+# 使用：
+#   copy .env.example .env   # 按需改密码与 JWT 密钥
+#   docker compose up -d --build
+#   浏览器打开 http://localhost
+#
+# 说明：
+# - MySQL 首次启动会执行 deploy/mysql/init/*.sql 建表与灌演示数据（只跑一次）
+# - 管理员/收银员账号由后端启动时用 BCrypt 创建（见 DemoDataInitializer）
+# - 数据落在具名 volume 里，down 不会删数据；要清空用 docker compose down -v
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: retail-mysql
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_general_ci
+      - --default-time-zone=+08:00
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root123456}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-retail_suite}
+      MYSQL_USER: ${MYSQL_USER:-retail}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-retail123456}
+    volumes:
+      - mysql-data:/var/lib/mysql
+      # 建表脚本：生产 DDL（MySQL 方言）
+      - ./deploy/mysql/init:/docker-entrypoint-initdb.d:ro
+      # 演示数据直接挂载应用里那一份（方言中立），避免维护两份、改一处漏一处
+      - ./src/main/resources/db/data-demo.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+    ports:
+      # 只暴露到本机，避免公网直接连数据库
+      - "127.0.0.1:3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-root123456}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: retail-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: .
+    container_name: retail-backend
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-retail_suite}
+      MYSQL_USER: ${MYSQL_USER:-retail}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-retail123456}
+      REDIS_HOST: redis
+      # 生产必须改：至少 32 字节随机串
+      JWT_SECRET: ${JWT_SECRET:-please-change-this-secret-in-production-32bytes}
+      # 可选：配了才走大模型，否则 AI 模块自动退化成本地规则解析
+      AI_ENABLED: ${AI_ENABLED:-true}
+      AI_BASE_URL: ${AI_BASE_URL:-https://api.deepseek.com}
+      AI_MODEL: ${AI_MODEL:-deepseek-chat}
+      AI_API_KEY: ${AI_API_KEY:-}
+    ports:
+      - "127.0.0.1:8080:8080"
+
+  frontend:
+    build: ./frontend
+    container_name: retail-frontend
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+
+volumes:
+  mysql-data:
+  redis-data:
