@@ -223,11 +223,10 @@ class AcceptanceSmokeTest {
 
     /** 发请求并断言 HTTP 状态码，返回 data 节点（业务失败时返回整个响应体便于断言错误码）。 */
     private JsonNode call(HttpMethod method, String url, String token, Object body, int expectedStatus) throws Exception {
-        var builder = switch (method) {
-            case POST -> org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(url);
-            case GET -> org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(url);
-            default -> throw new IllegalArgumentException("未支持的 method: " + method);
-        };
+        // 注意：Spring 6 起 HttpMethod 是类而不是枚举，不能对它用 switch-case（会被当成模式匹配预览特性）
+        var builder = HttpMethod.POST.equals(method)
+                ? org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(url)
+                : org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(url);
         builder.header("Authorization", "Bearer " + token);
         if (body != null) {
             builder.contentType(MediaType.APPLICATION_JSON)
