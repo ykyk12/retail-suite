@@ -5,14 +5,16 @@ import com.retailsuite.ai.dto.AiDtos;
 import com.retailsuite.ai.entity.AiDraft;
 import com.retailsuite.ai.mapper.AiDraftMapper;
 import com.retailsuite.ai.nlp.ChineseOrderParser;
-import com.retailsuite.ai.service.AssistantService;
 import com.retailsuite.ai.service.NlDraftService;
+import com.retailsuite.agent.dto.AgentDtos;
+import com.retailsuite.agent.runtime.AgentRuntime;
 import com.retailsuite.common.BizException;
 import com.retailsuite.common.ErrorCode;
 import com.retailsuite.product.dto.ProductDtos;
 import com.retailsuite.product.mapper.ProductMapper;
 import com.retailsuite.product.service.ProductService;
 import com.retailsuite.purchase.service.PurchaseService;
+import com.retailsuite.security.AuthUser;
 import com.retailsuite.sales.dto.SalesDtos;
 import com.retailsuite.sales.entity.SaleOrder;
 import com.retailsuite.sales.service.SaleService;
@@ -26,6 +28,7 @@ import org.springframework.test.context.ActiveProfiles;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -45,7 +48,7 @@ class AiModuleTest {
     @Autowired
     private NlDraftService nlDraftService;
     @Autowired
-    private AssistantService assistantService;
+    private AgentRuntime agentRuntime;
     @Autowired
     private ChineseOrderParser parser;
     @Autowired
@@ -62,12 +65,21 @@ class AiModuleTest {
     private StoreMapper storeMapper;
 
     private Long storeId;
+    private AuthUser admin;
 
     @BeforeEach
     void setUp() {
         Store store = storeMapper.selectOne(new LambdaQueryWrapper<Store>().last("LIMIT 1"));
         assertNotNull(store);
         storeId = store.getId();
+        admin = new AuthUser(9101L, storeId, "ai-test-admin", "AI测试店长", Set.of("ADMIN"),
+                Set.of("report:read", "inventory:read", "product:read", "purchase:read",
+                        "purchase:write", "ai:use"));
+    }
+
+    /** 经营助手统一走管家 Agent 运行时：HTTP 的 /api/ai/assistant/ask 与 /api/agent/chat 是同一套实现。 */
+    private AgentDtos.ChatResponse ask(String question) {
+        return agentRuntime.chat(admin, storeId, new AgentDtos.ChatRequest(null, question));
     }
 
     @Test
@@ -185,7 +197,7 @@ class AiModuleTest {
                 "散客", List.of(new SalesDtos.ItemRequest(product.id(), 2, null)),
                 BigDecimal.ZERO, SaleOrder.PAY_CASH, null));
 
-        AiDtos.AskResponse answer = assistantService.ask(storeId, "今天卖了多少");
+        AgentDtos.ChatResponse answer = ask("今天卖了多少");
 
         assertEquals("RULE", answer.source(), "未配置模型时走本地规则分支");
         assertTrue(answer.answer().contains("营业额"), answer.answer());
@@ -197,17 +209,17 @@ class AiModuleTest {
     void 助手能回答库存预警与单品库存() {
         ProductDtos.View lowStock = createProduct("AI测试低库存商品", 2, "3.00", "1.00");
 
-        AiDtos.AskResponse warning = assistantService.ask(storeId, "哪些商品需要补货");
+        AgentDtos.ChatResponse warning = ask("哪些商品需要补货");
         assertTrue(warning.answer().contains(lowStock.name()), warning.answer());
 
-        AiDtos.AskResponse stock = assistantService.ask(storeId, lowStock.name() + " 还有多少库存");
+        AgentDtos.ChatResponse stock = ask(lowStock.name() + " 还有多少库存");
         assertTrue(stock.answer().contains("库存"), stock.answer());
         assertTrue(stock.answer().contains(lowStock.name()), stock.answer());
     }
 
     @Test
     void 助手对对账问题能给出结论() {
-        AiDtos.AskResponse answer = assistantService.ask(storeId, "今天对账有差异吗");
+        AgentDtos.ChatResponse answer = ask("今天对账有差异吗");
 
         assertTrue(answer.toolsUsed().contains("reconcile"));
         assertTrue(answer.answer().contains("对账"), answer.answer());
@@ -215,7 +227,7 @@ class AiModuleTest {
 
     @Test
     void 助手遇到不会的问题会说清能力边界而不是编造() {
-        AiDtos.AskResponse answer = assistantService.ask(storeId, "帮我预测下个月的销量");
+        AgentDtos.ChatResponse answer = ask("帮我预测下个月的销量");
 
         assertTrue(answer.answer().contains("我可以回答"), "答不了就说清能力边界：" + answer.answer());
         assertTrue(answer.toolsUsed().isEmpty());

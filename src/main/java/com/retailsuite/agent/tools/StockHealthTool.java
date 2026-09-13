@@ -44,11 +44,6 @@ public class StockHealthTool implements AgentTool {
     }
 
     @Override
-    public Map<String, String> parameterSchema() {
-        return Map.of();
-    }
-
-    @Override
     public Map<String, String> parameters() {
         return Map.of();
     }

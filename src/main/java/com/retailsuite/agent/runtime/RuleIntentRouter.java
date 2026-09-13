@@ -71,7 +71,7 @@ public class RuleIntentRouter {
 
     private AgentDtos.ChatResponse capability(AuthUser user, Long storeId, String question, String prefix) {
         String answer = (prefix == null ? "" : prefix + "\n\n") + """
-                我可以帮你做这些事（每条都能给出具体数字与依据）：
+                我可以回答这些问题，也可以帮你把这些事处理掉（下面每条都能给出具体数字与依据）：
                 · 经营概况：今天/昨天/本周卖了多少、毛利多少、客单价多少
                 · 哪个商品最好卖：按销售额/销量/毛利排行
                 · 单品画像：进价、售价、毛利率、当前库存、批次与到期日、近 30 天销量、多久没卖出

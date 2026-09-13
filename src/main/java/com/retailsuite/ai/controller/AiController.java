@@ -1,7 +1,6 @@
 package com.retailsuite.ai.controller;
 
 import com.retailsuite.ai.dto.AiDtos;
-import com.retailsuite.ai.service.AssistantService;
 import com.retailsuite.ai.service.NlDraftService;
 import com.retailsuite.common.ApiResponse;
 import com.retailsuite.security.RequiresPermission;

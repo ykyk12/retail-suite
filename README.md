@@ -3,7 +3,7 @@
 > 一句话：**给小微零售店用的进销存 + 收银系统**——进货登记、库存与预警、扫码收银、退货、日报与对账，一套跑起来就能用。
 > 技术：Spring Boot 3 + MyBatis-Plus + MySQL 8 + Redis + JWT · Vue 3 + TypeScript + Element Plus + ECharts
 
-当前版本 **1.0.0**：后端 46 个自动化测试、前端类型检查与构建、CI 两个 job 全绿；`docker compose up -d --build` 一键起全栈（MySQL + Redis + 后端 + Nginx 前端）。
+当前版本 **1.1.0**：后端 64 个自动化测试、前端类型检查与构建、CI 三个 job 全绿（含 docker compose 全栈冒烟）；`docker compose up -d --build` 一键起全栈（MySQL + Redis + 后端 + Nginx 前端）。
 
 ---
 
@@ -19,13 +19,14 @@
 |---|---|---|
 | 认证与权限 | JWT 登录、角色/权限码、门店数据隔离 | 密码 BCrypt；权限码如 `sale:create`、`purchase:write`，接口上直接声明 |
 | 商品 | 商品与分类 CRUD、条码检索、上架/停售、低库存标记 | 条码门店内唯一（数据库唯一索引兜底） |
-| 库存 | 库存流水（每次变动都有账）、盘点调整（必须填原因）、低库存预警 | 库存**只能**通过库存服务变更，商品编辑接口不含库存字段 |
-| 采购 | 采购单草稿 → 确认入库、取消 | 录单不动库存，确认入库才增加库存（符合门店"先登记、货到再入库"的实际流程） |
-| 收银 | 扫码/搜索加购、改价、折扣、多种支付方式、幂等结算、小票打印 | 结算用 `requestId` 幂等键，重复提交/网络重试只产生一笔订单 |
+| 库存 | 库存流水（每次变动都有账）、批次台账（进价/生产日/到期日）、盘点调整（必须填原因）、低库存预警 | 库存**只能**通过库存服务变更；出库按 FEFO（先到期先出）扣批次，商品编辑接口不含库存字段 |
+| 保质期管家 | 临期批次、已过期批次、临期压了多少钱、批次与库存不符自查 | 到期日缺失时按"入库日 + 商品保质期"推算并留痕；`/api/inventory/expiring` 等接口供前端与 Agent 共用 |
+| 采购 | 采购单草稿 → 确认入库、取消 | 录单不动库存，确认入库才增加库存并生成批次（符合门店"先登记、货到再入库"的实际流程） |
+| 收银 | 扫码/搜索加购、改价、折扣、多种支付方式、幂等结算、小票打印 | 结算用 `requestId` 幂等键，重复提交/网络重试只产生一笔订单；销售按批次锁成本，毛利含真实进价 |
 | 订单与退货 | 订单查询、部分退货、超退拦截 | 退货按明细记 `refunded_quantity`，并发也不会退超 |
 | 报表 | 实时经营概览、日报（物化汇总）、TOP 商品与毛利、**对账差异**、Excel 导出 | 对账比对"销售数量 vs 库存出库数量"，发现绕过收银的库存改动 |
 | AI 录单 | 一句话录采购单（草稿 + 人工确认） | 大模型解析失败自动回退本地规则解析；**AI 不直接改账** |
-| 经营助手 | 只读问答：营业额、畅销商品、库存预警、单品库存、对账 | 只挂只读工具；未配模型时走规则意图识别 |
+| 管家 Agent | 多轮对话 + 工具调用：经营概况、商品排行、单品画像（进价/售价/毛利/批次/多久没卖）、临期与过期、缺货风险、补货建议、滞销、对账、**生成采购单草稿** | 9 个声明式工具，工具自带权限码与只读标记；运行时做权限过滤 + 每用户每分钟限流 + 每次调用审计；写操作只出草稿，人工确认才落单；未配模型时同一条工具链走规则兜底（`source=RULE`） |
 | 审计 | 登录、结算、退货、入库、库存调整、AI 草稿确认全部留痕 | append-only，含 traceId 便于串联排查 |
 
 ## 3. 技术栈
@@ -38,14 +39,16 @@
 
 ```
 ┌──────────── 前端（Vue3 + Element Plus）─────────────┐
-│ 收银台  │ 商品/库存/采购  │ 订单/退货 │ 报表对账 │ AI 录单/助手 │
+│ 收银台 │ 商品/库存/采购 │ 订单/退货 │ 报表对账 │ 管家 Agent 对话 │
 └───────────────────────┬────────────────────────────┘
                         │ /api（开发期 Vite 代理；生产 Nginx 反代）
 ┌───────────────────────▼────────────────────────────┐
 │ Nginx → 后端单体（分层：controller / service / mapper）│
 │  鉴权拦截器（JWT + 权限码）→ 门店上下文（ThreadLocal）  │
-│  ProductService · InventoryService · PurchaseService   │
-│  SaleService（幂等）· ReportService · AI（NLP/LLM/只读工具）│
+│  ProductService · InventoryService（批次/效期）         │
+│  PurchaseService · SaleService（幂等）· ReportService   │
+│  Agent 运行时：工具注册表 → 守卫（权限/限流/审计）→ 执行器│
+│  AI 录单：NLP / LLM 解析 → 草稿 → 人工确认             │
 └───────┬─────────────────────────────────┬────────────┘
         │ 同库事务（库存、订单、流水必须一致）   │
    ┌────▼─────┐                       ┌─────▼─────┐
@@ -171,9 +174,23 @@ UPDATE sale_order_item SET refunded_quantity = refunded_quantity + #{qty}
 2. **销售单不允许 AI 生成**：销售涉及收款与库存扣减，必须由收银员在收银台逐步确认（接口层面直接拒绝）
 3. **解析来源可追溯**：草稿记录 `source=LLM|RULE`、原始文本与解析结果；解析不出的行**标注出来让人改，绝不瞎猜商品**
 
-经营助手只挂只读工具（营业额/畅销/库存预警/单品库存/对账），模型只负责"选工具、传参数"，
-真正的数字由 Java 查库返回；没配模型时走规则意图识别，功能照样可用。
-CI 里跑的正是这条离线分支（10 个用例，含"答不了就说清能力边界"）。
+经营助手（管家 Agent）只挂只读工具 + 一个"只出草稿"的写工具，模型只负责"选工具、传参数"，
+真正的数字由 Java 查库返回；没配模型时走规则意图识别，**同一条工具链**照样可用。
+CI 里跑的正是这条离线分支（`AgentRuntimeTest` 9 + `AiModuleTest` 10，含"答不了就说清能力边界"）。
+
+### 6.8 管家 Agent：把"会不会乱来"变成架构问题
+
+Agent 的危险不在于答错，而在于**它有权改你的账**。所以约束写在接口上，而不是写在提示词里：
+
+| 约束 | 实现 | 面试可深挖 |
+|---|---|---|
+| 工具自己的能力 | `AgentTool` 接口声明 `name/description/parameters/permission/readOnly` | 权限是代码属性，不是提示词里的一句"请不要…" |
+| 模型只看得见有权限的工具 | `AgentToolRegistry.catalogFor(user)` 按权限过滤后写进系统提示词 | 收银员根本看不到进货类工具，谈不上误调 |
+| 每次都过守卫 | `AgentGuard`：权限码校验 + 每用户每分钟限流（30 次）+ 审计 `AGENT_TOOL_CALL/DENIED/RATE_LIMITED` | 越权与刷接口都留痕 |
+| 参数不信任模型 | 注册表按 `parameters()` 校验必填，缺失直接拒绝 | 宁可让模型重问，也不瞎猜商品 |
+| 写操作只出草稿 | `draft_purchase_order` 只创建草稿采购单，库存不变 | 真正的库存变更仍需人工在采购页确认 |
+| 门店隔离 | `storeId` 由登录态注入，**不接受模型传参** | 从根上避免"帮我查隔壁店" |
+| 会话与降级 | `AgentSessionStore` 按用户隔离、TTL 2h、轮次裁剪；模型不可用 → 规则兜底 `source=RULE` | 断网时管家照样能查库存 |
 
 ## 7. 接口速览
 
@@ -182,26 +199,32 @@ CI 里跑的正是这条离线分支（10 个用例，含"答不了就说清能�
 | 认证 | `POST /api/auth/login`、`GET /api/auth/me`、`POST /api/auth/logout` | 公开 / 登录 |
 | 商品 | `GET/POST /api/products`、`PUT /api/products/{id}`、`GET /api/products/barcode/{barcode}`、`PATCH /{id}/status` | `product:read` / `product:write` |
 | 分类 | `GET/POST /api/categories`、`PUT/DELETE /api/categories/{id}` | `product:read` / `category:write` |
-| 库存 | `GET /api/inventory/low-stock`、`GET /api/inventory/flows/{productId}`、`POST /api/inventory/adjust` | `inventory:read` / `inventory:adjust` |
+| 库存 | `GET /api/inventory/low-stock`、`GET /api/inventory/flows/{productId}`、`POST /api/inventory/adjust`、`POST /api/inventory/loss` | `inventory:read` / `inventory:adjust` / `inventory:loss` |
+| 保质期 | `GET /api/inventory/batches/{productId}`、`/expiring`、`/expired`、`/expiry-summary`、`/batch-mismatch` | `inventory:read` |
 | 采购 | `GET/POST /api/purchases`、`POST /{id}/confirm`、`POST /{id}/cancel` | `purchase:read` / `purchase:write` |
 | 收银 | `POST /api/sales/checkout`、`POST /api/sales/{id}/refund`、`GET /api/sales` | `sale:create` / `refund:create` / `sale:read` |
 | 报表 | `GET /api/reports/overview`、`/daily`、`/top-products`、`/reconcile`、`POST /daily/{date}/rebuild`、`GET /export/daily` | `report:read` |
-| AI | `POST /api/ai/drafts`、`POST /{id}/confirm`、`GET /api/ai/drafts`、`POST /api/ai/assistant/ask` | `ai:use` |
+| AI 录单 | `POST /api/ai/drafts`、`POST /{id}/confirm`、`GET /api/ai/drafts` | `ai:use` |
+| 管家 Agent | `POST /api/agent/chat`（多轮 + 工具轨迹 + 建议卡片）、`GET /api/agent/tools`（当前账号可用工具）；旧路径 `POST /api/ai/assistant/ask` 保留兼容 | `ai:use` |
 
 统一响应体：`{ success, code, message, data, traceId }`；错误码见 `ErrorCode`。
 
 ## 8. 测试与 CI
 
-最近一次 CI（两个 job 全绿）：
+最近一次 CI（三个 job 全绿：后端单测 + 前端构建 + docker compose 全栈冒烟）：
 
-- **后端** `mvn verify`：**46 个测试**
+- **后端** `mvn verify`：**64 个测试**
   - `AuthFlowTest`(8)：登录、错误密码不泄漏用户名是否存在、篡改签名被拒、未登录 401、收银员越权 403、参数校验
   - `ProductInventoryTest`(9)：**30 线程并发扣 10 件库存不超卖**、流水 before/after 自洽、库存不足不改数据、盘点需原因、跨门店不可见
+  - `BatchExpiryTest`(6)：批次入库、FEFO 先到期先出、临期/过期查询、到期日缺失按保质期推算并留痕、批次与库存对不上能被自查出来
   - `PurchaseFlowTest`(5)：录单不动库存、同商品合并、重复确认被状态机拒绝、已入库不可取消
   - `SaleOrderFlowTest`(7)：金额计算、幂等（串行 + **并发同 requestId 只落一笔**）、库存不足整笔回滚、部分退货与超退拦截
   - `ReportFlowTest`(6)：毛利口径（含退款成本）、汇总幂等且与实时口径一致、TOP 商品、对账发现人为差异、Excel 真实字节流
-  - `AiModuleTest`(10)：规则解析（含条码与多行）、未识别不瞎猜、确认生成采购单但不动库存、销售草稿被拒、助手只读问答与能力边界
+  - `AgentRuntimeTest`(9)：工具注册与只读标记、收银员看不到进货工具、越权直接拒绝、**采购草稿不动库存**、会话记忆与裁剪、规则兜底与能力边界
+  - `AiModuleTest`(10)：规则解析（含条码与多行）、未识别不瞎猜、确认生成采购单但不动库存、销售草稿被拒、助手问答与能力边界
+  - `AcceptanceSmokeTest`(3)：HTTP 层全链路（登录 → 建商品 → 进货 → 收银 → 退货 → 对账 → 管家问答）
 - **前端**：`npm run type-check`（vue-tsc 0 错误）+ `npm run build`（产出 dist 并上传 artifact）
+- **e2e**：`docker compose` 起 MySQL/Redis/后端/前端 → 等健康检查 → 通过 Nginx 跑 31 项端到端冒烟
 
 ## 9. 已知边界（诚实清单）
 
@@ -220,7 +243,7 @@ CI 里跑的正是这条离线分支（10 个用例，含"答不了就说清能�
 
 - **多店与连锁**：总部视角汇总、跨店调拨
 - **支付与对账闭环**：微信/支付宝回调、日终自动对账
-- **更强的 AI**：小票照片识别入库、按销售预测补货建议（仍然保持"草稿 + 人工确认"）
+- **更强的 AI**：小票照片识别入库、把"临期 + 滞销 + 缺货"合成每天的主动巡检报告推给店长（仍然保持"草稿 + 人工确认"）
 - **性能**：商品与库存的热点缓存、报表汇总的增量更新（只重算变动天）
 - **交付**：一键部署脚本、备份恢复演练、Grafana 面板
 
@@ -228,6 +251,7 @@ CI 里跑的正是这条离线分支（10 个用例，含"答不了就说清能�
 
 | 版本 | 说明 |
 |---|---|
+| 1.1.0 | 批次与保质期：批次台账（进价/生产日/到期日）、FEFO 先到期先出、过期报损、临期汇总；管家 Agent：9 个声明式工具 + 权限过滤 + 限流 + 审计 + 多轮会话 + 规则兜底，写操作只出草稿；旧助手接口统一由 Agent 运行时接管；e2e 冒烟扩到 31 项 |
 | 1.0.0 | 首个完整版本：认证与权限（JWT + 权限码 + 门店隔离 + 审计）、商品与分类、库存条件更新防超卖与流水、采购入库、收银幂等结算、退货回补、日报与 TOP 商品与对账、Excel 流式导出、AI 录单与经营助手、Vue3 前端（收银台 + 管理后台）、双 job CI、Docker Compose 全栈部署 |
 
 ## 12. License

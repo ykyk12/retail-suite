@@ -183,7 +183,7 @@ class AgentRuntimeTest {
                 new AgentDtos.ChatRequest(null, "帮我预测下个季度的天气如何"));
 
         assertTrue(response.toolsUsed().isEmpty(), "答不了就不该乱调工具：" + response.toolsUsed());
-        assertTrue(response.answer().contains("我可以帮你"), response.answer());
+        assertTrue(response.answer().contains("我可以回答"), response.answer());
     }
 
     @Test
