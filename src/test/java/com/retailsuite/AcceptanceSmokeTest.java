@@ -3,6 +3,7 @@ package com.retailsuite;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.retailsuite.report.mapper.ReportMapper;
 import com.retailsuite.store.entity.Store;
 import com.retailsuite.store.mapper.StoreMapper;
 import org.junit.jupiter.api.Test;
@@ -20,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -44,6 +46,8 @@ class AcceptanceSmokeTest {
     private ObjectMapper objectMapper;
     @Autowired
     private StoreMapper storeMapper;
+    @Autowired
+    private ReportMapper reportMapper;
 
     @Test
     void 未登录访问受保护接口返回401() throws Exception {
@@ -154,14 +158,19 @@ class AcceptanceSmokeTest {
         assertTrue(overview.path("orderCount").asLong() >= 1);
         assertTrue(overview.path("netAmount").decimalValue().compareTo(BigDecimal.ZERO) > 0);
 
-        String today = java.time.LocalDate.now().toString();
+        java.time.LocalDate today = java.time.LocalDate.now();
         JsonNode rebuild1 = call(HttpMethod.POST, "/api/reports/daily/" + today + "/rebuild", token, null, 200);
         JsonNode rebuild2 = call(HttpMethod.POST, "/api/reports/daily/" + today + "/rebuild", token, null, 200);
         assertEquals(rebuild1.path("netAmount").asText(), rebuild2.path("netAmount").asText(), "汇总重算必须幂等");
 
         JsonNode reconcile = call(HttpMethod.GET, "/api/reports/reconcile", token, null, 200);
-        assertTrue(reconcile.path("consistent").asBoolean(),
-                "正常流程后销售数量与库存出库必须一致，差异=" + reconcile.path("diffs"));
+        // 对账左侧数据源（今天的 SALE 库存流水）必须可读；这条断言用来定位"差异行全是 flow=0"这类问题
+        assertFalse(reportMapper.saleFlowQuantityByProduct(storeId,
+                        today.atStartOfDay(), today.plusDays(1).atStartOfDay()).isEmpty(),
+                "应能从库存流水读到今天的 SALE 记录（对账的数据来源）");
+        // 全局一致性由 ReportFlowTest 覆盖；这里断言本用例自己造的数据必须一致
+        assertFalse(hasDiff(reconcile.path("diffs"), productId),
+                "本用例的商品不应有对账差异，当前差异=" + reconcile.path("diffs"));
 
         // ---------- 13. AI 录单：解析 → 草稿（不产生单据） ----------
         JsonNode draft = call(HttpMethod.POST, "/api/ai/drafts", token, Map.of(
@@ -252,5 +261,10 @@ class AcceptanceSmokeTest {
             }
         }
         return false;
+    }
+
+    /** 差异列表里是否有指定商品的差异行。 */
+    private boolean hasDiff(JsonNode diffs, long productId) {
+        return containsId(diffs, "productId", productId);
     }
 }
