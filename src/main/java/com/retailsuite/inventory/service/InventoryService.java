@@ -259,14 +259,15 @@ public class InventoryService {
 
     /** 某商品的批次列表（含已售罄与已过期，用于追溯）。 */
     public List<InventoryDtos.BatchView> batches(Long storeId, Long productId) {
+        Product product = requireProduct(storeId, productId);
         List<ProductBatch> batches = batchMapper.listByProduct(storeId, productId);
         LocalDate today = LocalDate.now();
         List<InventoryDtos.BatchView> views = new ArrayList<>(batches.size());
         for (ProductBatch batch : batches) {
             Long days = batch.daysToExpiry(today);
-            views.add(new InventoryDtos.BatchView(batch.getId(), batch.getBatchNo(), batch.getProductionDate(),
-                    batch.getExpiryDate(), batch.getQuantity(), batch.getCostPrice(), batch.getRemark(),
-                    days, batch.expiredAt(today)));
+            views.add(new InventoryDtos.BatchView(batch.getId(), batch.getBatchNo(), batch.getProductId(),
+                    product.getName(), batch.getProductionDate(), batch.getExpiryDate(), batch.getQuantity(),
+                    batch.getCostPrice(), batch.getRemark(), days, batch.expiredAt(today)));
         }
         return views;
     }
