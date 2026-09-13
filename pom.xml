@@ -19,7 +19,8 @@
 
     <properties>
         <java.version>17</java.version>
-        <mybatis-plus.version>3.5.9</mybatis-plus.version>
+        <!-- 3.5.9 起分页插件被拆到单独的 mybatis-plus-jsqlparser 模块，这里用仍自带分页的 3.5.7，减少依赖面 -->
+        <mybatis-plus.version>3.5.7</mybatis-plus.version>
         <poi.version>5.2.5</poi.version>
         <springdoc.version>2.6.0</springdoc.version>
     </properties>
