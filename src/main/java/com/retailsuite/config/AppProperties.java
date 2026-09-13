@@ -15,6 +15,7 @@ public class AppProperties {
     private Order order = new Order();
     private Report report = new Report();
     private Ai ai = new Ai();
+    private Steward steward = new Steward();
 
     @Data
     public static class Jwt {
@@ -41,6 +42,17 @@ public class AppProperties {
     @Data
     public static class Report {
         private String dailySummaryCron = "0 10 0 * * ?";
+    }
+
+    /** 管家巡检（主动发现问题的定时任务 + 判定阈值）。 */
+    @Data
+    public static class Steward {
+        /** 巡检任务执行时间：默认每天 07:30（开门前，店长到店就能看到今天的发现） */
+        private String inspectCron = "0 30 7 * * ?";
+        /** 毛利异常阈值（%）：近 30 天毛利率低于它就算异常 */
+        private int marginAlertPercent = 10;
+        /** 补货建议的备货覆盖天数 */
+        private int coverDays = 7;
     }
 
     @Data

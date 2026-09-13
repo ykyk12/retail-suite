@@ -249,3 +249,20 @@ CREATE TABLE IF NOT EXISTS product_batch (
     UNIQUE KEY uk_batch_store_no (store_id, batch_no),
     KEY idx_batch_product_expiry (product_id, expiry_date)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT '商品批次（保质期管理）';
+
+-- 管家巡检日报：定时把"过期/临期/断货/滞销/毛利异常/账实不符"发现一遍并落库
+CREATE TABLE IF NOT EXISTS steward_report (
+    id            BIGINT AUTO_INCREMENT PRIMARY KEY,
+    store_id      BIGINT       NOT NULL,
+    report_date   DATE         NOT NULL COMMENT '报告日期（同门店同一天唯一，重复巡检覆盖）',
+    source        VARCHAR(16)  NOT NULL COMMENT 'SCHEDULED 定时 / MANUAL 手动触发',
+    headline      VARCHAR(500) NOT NULL COMMENT '一句话总结（列表页与提醒用）',
+    finding_count INT          NOT NULL DEFAULT 0,
+    high_count    INT          NOT NULL DEFAULT 0 COMMENT '需立即处理的发现条数',
+    findings      MEDIUMTEXT   NOT NULL COMMENT '结构化发现（JSON 数组，含指标与可执行动作）',
+    generated_at  DATETIME     NOT NULL,
+    updated_at    DATETIME     NOT NULL,
+    deleted       TINYINT      NOT NULL DEFAULT 0,
+    UNIQUE KEY uk_steward_store_date (store_id, report_date),
+    KEY idx_steward_store_date (store_id, report_date)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT '管家巡检日报';

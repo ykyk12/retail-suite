@@ -1,39 +1,31 @@
 package com.retailsuite.agent.tools;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.retailsuite.agent.tool.AgentTool;
 import com.retailsuite.agent.tool.ToolOutcome;
-import com.retailsuite.product.entity.Product;
-import com.retailsuite.product.mapper.ProductMapper;
-import com.retailsuite.report.dto.ReportDtos;
-import com.retailsuite.report.mapper.ReportMapper;
+import com.retailsuite.config.AppProperties;
+import com.retailsuite.steward.service.StewardAnalysisService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * 滞销商品：连续 N 天卖不动、但还压着库存的商品。
  * 判据用"最后一次售出时间"，比"区间内销量为 0"更准确（能区分"最近没卖"和"从来没卖过"）。
+ *
+ * 判定逻辑与巡检日报共用 {@link StewardAnalysisService}，两边结论必然一致。
  */
 @Component
 @RequiredArgsConstructor
 public class SlowMoverTool implements AgentTool {
 
-    private static final int DEFAULT_DAYS = 30;
-
-    private final ProductMapper productMapper;
-    private final ReportMapper reportMapper;
+    private final StewardAnalysisService analysisService;
+    private final AppProperties properties;
 
     @Override
     public String name() {
@@ -64,42 +56,24 @@ public class SlowMoverTool implements AgentTool {
 
     @Override
     public ToolOutcome execute(Long storeId, Map<String, Object> args) {
-        int days = intArg(args.get("days"), DEFAULT_DAYS);
-        LocalDate today = LocalDate.now();
-        LocalDateTime cutoff = today.minusDays(days).atStartOfDay();
-
-        // 近 N 天有销售的商品（不在滞销之列）
-        Set<Long> soldRecently = new LinkedHashSet<>();
-        for (ReportDtos.TopProduct product : reportTopProducts(storeId, cutoff, today.plusDays(1).atStartOfDay())) {
-            soldRecently.add(product.productId());
-        }
+        int days = intArg(args.get("days"), properties.getInventory().getSlowMovingDays());
+        List<StewardAnalysisService.SlowMover> movers = analysisService.slowMovers(storeId, days);
 
         List<Map<String, Object>> rows = new ArrayList<>();
         BigDecimal tiedUp = BigDecimal.ZERO;
-        for (Product product : productMapper.selectList(new LambdaQueryWrapper<Product>()
-                .eq(Product::getStoreId, storeId)
-                .eq(Product::getStatus, 1)
-                .gt(Product::getStock, 0))) {
-            if (soldRecently.contains(product.getId())) {
-                continue;
-            }
-            LocalDateTime lastSaleAt = reportMapper.lastSaleAt(storeId, product.getId());
-            long daysSinceLastSale = lastSaleAt == null ? -1
-                    : ChronoUnit.DAYS.between(lastSaleAt.toLocalDate(), today);
-            BigDecimal stockValue = (product.getPurchasePrice() == null ? BigDecimal.ZERO : product.getPurchasePrice())
-                    .multiply(BigDecimal.valueOf(product.getStock())).setScale(2, RoundingMode.HALF_UP);
-            tiedUp = tiedUp.add(stockValue);
-
+        for (StewardAnalysisService.SlowMover mover : movers) {
+            tiedUp = tiedUp.add(mover.stockValue());
             Map<String, Object> row = new LinkedHashMap<>();
-            row.put("productId", product.getId());
-            row.put("productName", product.getName());
-            row.put("stock", product.getStock());
-            row.put("purchasePrice", product.getPurchasePrice());
-            row.put("stockValue", stockValue);
-            row.put("lastSaleDate", lastSaleAt == null ? null : lastSaleAt.toLocalDate().toString());
-            row.put("daysSinceLastSale", daysSinceLastSale);
+            row.put("productId", mover.productId());
+            row.put("productName", mover.productName());
+            row.put("stock", mover.stock());
+            row.put("purchasePrice", mover.purchasePrice());
+            row.put("stockValue", mover.stockValue());
+            row.put("lastSaleDate", mover.lastSaleDate() == null ? null : mover.lastSaleDate().toString());
+            row.put("daysSinceLastSale", mover.daysSinceLastSale());
             rows.add(row);
         }
+        tiedUp = tiedUp.setScale(2, RoundingMode.HALF_UP);
 
         StringBuilder sb = new StringBuilder();
         if (rows.isEmpty()) {
@@ -127,20 +101,6 @@ public class SlowMoverTool implements AgentTool {
         data.put("tiedUpAmount", tiedUp);
         data.put("items", rows);
         return ToolOutcome.ok(sb.toString(), data);
-    }
-
-    private List<ReportDtos.TopProduct> reportTopProducts(Long storeId, LocalDateTime from, LocalDateTime to) {
-        // ReportService#topProducts 只接受日期，这里直接调 mapper 以支持更精确的时间区间
-        List<ReportDtos.TopProductRow> rows = reportMapper.topProducts(storeId, from, to, 500);
-        List<ReportDtos.TopProduct> products = new ArrayList<>(rows.size());
-        for (ReportDtos.TopProductRow row : rows) {
-            BigDecimal amount = row.getAmount() == null ? BigDecimal.ZERO : row.getAmount();
-            BigDecimal cost = row.getCost() == null ? BigDecimal.ZERO : row.getCost();
-            products.add(new ReportDtos.TopProduct(row.getProductId(), row.getProductName(),
-                    row.getQuantity() == null ? 0 : row.getQuantity(), amount,
-                    amount.subtract(cost).setScale(2, RoundingMode.HALF_UP)));
-        }
-        return products;
     }
 
     private int intArg(Object raw, int fallback) {

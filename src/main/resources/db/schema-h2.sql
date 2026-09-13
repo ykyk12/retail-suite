@@ -268,6 +268,29 @@ CREATE UNIQUE INDEX IF NOT EXISTS uk_batch_store_no ON product_batch (store_id, 
 CREATE INDEX IF NOT EXISTS idx_batch_product_expiry ON product_batch (product_id, expiry_date);
 
 -- ============================================================================
+-- 管家巡检日报（M3）：定时把过期/临期/断货/滞销/毛利异常/账实不符发现一遍并落库
+--   设计要点：
+--   1) 唯一键 (store_id, report_date)：同一天重复巡检覆盖同一行，不会日均好几份；
+--   2) findings 存 JSON：前端按卡片渲染、按严重度排序，且"补货建议"里带着当时算出的
+--      数量与进价，一键转草稿时不再重算——看到的数字与下单的数字完全一致；
+--   3) 报告是管理动作的凭据：昨天管家说了什么、处理没处理，必须可回溯。
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS steward_report (
+    id            BIGINT AUTO_INCREMENT PRIMARY KEY,
+    store_id      BIGINT       NOT NULL,
+    report_date   DATE         NOT NULL,
+    source        VARCHAR(16)  NOT NULL,
+    headline      VARCHAR(500) NOT NULL,
+    finding_count INT          NOT NULL DEFAULT 0,
+    high_count    INT          NOT NULL DEFAULT 0,
+    findings      TEXT         NOT NULL,
+    generated_at  DATETIME     NOT NULL,
+    updated_at    DATETIME     NOT NULL,
+    deleted       TINYINT      NOT NULL DEFAULT 0
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_steward_store_date ON steward_report (store_id, report_date);
+
+-- ============================================================================
 -- 幂等升级语句：让已有的本地 H2 文件库也能升上来（新建库时这些语句是无操作）
 -- MySQL 侧见 deploy/mysql/migration/（MySQL 8 不支持 ADD COLUMN IF NOT EXISTS）
 -- ============================================================================

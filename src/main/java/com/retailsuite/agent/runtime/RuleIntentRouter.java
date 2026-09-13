@@ -77,9 +77,10 @@ public class RuleIntentRouter {
                 · 单品画像：进价、售价、毛利率、当前库存、批次与到期日、近 30 天销量、多久没卖出
                 · 保质期管家：哪些批次临期（剩多少天、压了多少钱）、哪些已过期要下架报损
                 · 缺货与补货：哪些有断货风险、建议补多少件，需要的话我直接生成采购单草稿
-                · 滞销与利润：哪些卖不动、哪些毛利偏低
+                · 滞销与利润：哪些卖不动、哪些毛利偏低甚至亏本
                 · 对账：销售数量与库存出库是否一致
-                说清"你要看什么 + 时间范围（可选）+ 商品名（可选）"就行。""";
+                说清"你要看什么 + 时间范围（可选）+ 商品名（可选）"就行。
+                另外我每天开门前会主动巡检一遍，把过期、临期、断货、滞销、毛利异常、账实不符整理成日报等你过目。""";
         return new AgentDtos.ChatResponse(null, answer, "RULE", List.of(), List.of(), List.of());
     }
 
@@ -102,6 +103,9 @@ public class RuleIntentRouter {
         }
         if (containsAny(text, "滞销", "卖不动", "没人买", "压货", "不动销")) {
             return new Intent("slow_movers", "滞销商品：", Map.of("days", 30), false);
+        }
+        if (containsAny(text, "毛利异常", "毛利率低", "毛利率很低", "毛利低", "不赚钱", "亏本", "亏损", "负毛利", "白忙活")) {
+            return new Intent("margin_alert", "毛利异常检查：", Map.of("days", 30), false);
         }
         if (containsAny(text, "毛利", "利润", "赚", "成本")) {
             String keyword = keywordOf(text);

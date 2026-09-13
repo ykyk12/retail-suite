@@ -177,6 +177,35 @@ check "经营助手回答营业额（只读工具）" 200 '(.data.answer | conta
 api POST /api/ai/assistant/ask '{"question":"帮我预测下个月的销量"}' "$TOKEN"
 check "助手答不了时说清能力边界" 200 '.data.answer | contains("我可以回答")'
 
+# ---------- 9. 批次与保质期（M1） ----------
+api GET "/api/inventory/batches/$PRODUCT_ID" "" "$TOKEN"
+check "商品批次台账（含到期日与批次成本）" 200 '.success == true and (.data | type == "array")'
+
+api GET /api/inventory/expiry-summary "" "$TOKEN"
+check "临期/过期汇总（按批次成本算压货金额）" 200 '.data.alertDays >= 1 and (.data.expiringBatchCount >= 0) and (.data.expiredBatchCount >= 0)'
+
+api GET /api/inventory/batch-mismatch "" "$TOKEN"
+check "批次数量与库存总数一致（不一致会被列出来）" 200 '.success == true and (.data | type == "array")'
+
+# ---------- 10. 管家 Agent 与巡检日报（M2/M3） ----------
+api GET /api/agent/tools "" "$TOKEN"
+check "管家工具目录（按账号权限过滤）" 200 '(.data | length >= 9)'
+
+api POST /api/agent/chat '{"question":"哪些商品快过期了"}' "$TOKEN"
+check "管家对话：调用工具并给出保质期结论" 200 '(.data.toolsUsed | length >= 1) and (.data.answer | length > 10)'
+
+api POST /api/agent/chat '{"question":"帮我看看库存够不够卖"}' "$TOKEN"
+check "管家对话：多轮会话返回 sessionId" 200 '.data.sessionId | length > 0'
+
+api POST /api/steward/inspect "" "$TOKEN"
+check "手动巡检生成日报（一句话总结 + 结构化发现）" 200 '(.data.headline | length > 10) and (.data.findings | type == "array")'
+
+api GET /api/steward/reports/latest "" "$TOKEN"
+check "巡检日报可回看" 200 '(.data.headline | length > 10) and (.data.reportDate | length == 10)'
+
+api GET "/api/steward/reports?limit=3" "" "$TOKEN"
+check "巡检日报历史列表" 200 '(.data | length >= 1)'
+
 echo
 echo "=== 结果 ==="
 echo "通过：$pass  失败：$fail"
@@ -185,5 +214,5 @@ if [ "$fail" -gt 0 ]; then
   for item in "${failures[@]}"; do printf ' - %s\n' "$item"; done
   exit 1
 fi
-echo "全部通过：登录权限、建档、采购入库、收银幂等、退货回补、报表对账、AI 录单与助手均正常"
+echo "全部通过：登录权限、建档、采购入库、收银幂等、退货回补、报表对账、AI 录单、批次与保质期、管家 Agent 与巡检日报均正常"
 exit 0

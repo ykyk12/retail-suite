@@ -97,6 +97,13 @@ app:
   report:
     # 日报汇总任务执行时间（分钟粒度 cron 用 @Scheduled(cron) 配置）
     daily-summary-cron: "0 10 0 * * ?"
+  steward:
+    # 管家巡检：每天开门前把每个门店过一遍，生成当天的巡检日报
+    inspect-cron: "${STEWARD_INSPECT_CRON:0 30 7 * * ?}"
+    # 毛利异常阈值（%）：近 30 天毛利率低于它就报出来
+    margin-alert-percent: 10
+    # 补货建议按多少天的销量备货
+    cover-days: 7
   ai:
     enabled: ${AI_ENABLED:true}
     # 留空则只走本地规则解析（离线可用）；配置后走 OpenAI 兼容协议
