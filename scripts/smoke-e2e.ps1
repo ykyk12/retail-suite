@@ -52,12 +52,22 @@ function Api($method, $path, $body, $token) {
     }
     if ($null -eq $resp) { throw "请求失败且拿不到响应（$failMessage）：$uri" }
 
-    # 响应正文统一按 UTF-8 读（中文错误消息才不会变问号）
+    # 响应正文统一按 UTF-8 读（中文错误消息才不会变问号）。
+    # 三种形态都要认，而且必须按"有没有对应能力"判断、不能只看属性名——
+    # PS 5.1 成功响应的 Content 是字符串（不是流），只看属性名会踩空：
+    #   · Windows PowerShell 5.1 成功 → BasicHtmlWebResponseObject（有 RawContentStream）
+    #   · Windows PowerShell 5.1 失败 → 异常里的 HttpWebResponse（用 GetResponseStream）
+    #   · PowerShell 7 失败 → 异常里的 HttpResponseMessage（用 Content.ReadAsStream）
     if ($resp -is [System.Net.HttpWebResponse]) {
         $stream = $resp.GetResponseStream()
-    } else {
+    } elseif ($null -ne $resp.RawContentStream) {
         $stream = $resp.RawContentStream
+    } elseif ($resp.Content -and ($resp.Content | Get-Member -Name ReadAsStream -MemberType Method)) {
+        $stream = $resp.Content.ReadAsStream()
+    } else {
+        $stream = $null
     }
+    if ($null -eq $stream) { throw "拿不到响应体（类型 $($resp.GetType().FullName)）：$failMessage" }
     $buffer = New-Object System.IO.MemoryStream
     $stream.CopyTo($buffer)
     $text = [System.Text.Encoding]::UTF8.GetString($buffer.ToArray())
