@@ -86,7 +86,9 @@ class ProductInventoryTest {
             pool.submit(() -> {
                 try {
                     startGate.await();
-                    inventoryService.decrease(storeId, product.id(), 1, "SALE", "TEST-CONCURRENT", "并发测试");
+                    // refType 用 MANUAL 而不是 SALE：这是合成压测流量，不是真实销售。
+                    // （用 SALE 会污染"销售数量 vs 库存出库"的对账口径，报表测试会立刻发现差异）
+                    inventoryService.decrease(storeId, product.id(), 1, "MANUAL", "TEST-CONCURRENT", "并发测试");
                     success.incrementAndGet();
                 } catch (BizException e) {
                     if (e.getCode() == ErrorCode.STOCK_NOT_ENOUGH) {
@@ -121,7 +123,7 @@ class ProductInventoryTest {
         ProductDtos.View product = createProduct("测试商品-不足", "BAR-" + System.nanoTime(), 1, 1);
 
         BizException error = assertThrows(BizException.class,
-                () -> inventoryService.decrease(storeId, product.id(), 5, "SALE", "TEST", null));
+                () -> inventoryService.decrease(storeId, product.id(), 5, "MANUAL", "TEST", null));
 
         assertEquals(ErrorCode.STOCK_NOT_ENOUGH, error.getCode());
         assertTrue(error.getMessage().contains("库存不足"), error.getMessage());

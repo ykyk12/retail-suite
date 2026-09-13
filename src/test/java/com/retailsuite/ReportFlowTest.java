@@ -65,21 +65,27 @@ class ReportFlowTest {
     @Test
     void 概览金额与毛利口径正确() {
         ProductDtos.View product = createProduct("报表商品A", 50, "10.00", "4.00");
+        // 断言用"增量"而不是绝对值：测试共享同一个库，成交数据会跨用例累积
+        ReportDtos.Overview before = reportService.overview(storeId, LocalDate.now());
+
         saleService.checkout(storeId, request(List.of(new SalesDtos.ItemRequest(product.id(), 2, null)),
                 BigDecimal.ZERO));
         saleService.checkout(storeId, request(List.of(new SalesDtos.ItemRequest(product.id(), 1, null)),
                 new BigDecimal("2.00")));
 
-        ReportDtos.Overview overview = reportService.overview(storeId, LocalDate.now());
+        ReportDtos.Overview after = reportService.overview(storeId, LocalDate.now());
 
-        assertEquals(2, overview.orderCount());
-        assertEquals(3, overview.itemCount());
-        assertEquals(0, new BigDecimal("30.00").compareTo(overview.salesAmount()));
-        assertEquals(0, BigDecimal.ZERO.compareTo(overview.refundAmount()));
-        assertEquals(0, new BigDecimal("30.00").compareTo(overview.netAmount()));
+        assertEquals(before.orderCount() + 2, after.orderCount());
+        assertEquals(before.itemCount() + 3, after.itemCount());
+        assertEquals(0, new BigDecimal("30.00").compareTo(delta(before.salesAmount(), after.salesAmount())));
+        assertEquals(0, BigDecimal.ZERO.compareTo(delta(before.refundAmount(), after.refundAmount())));
+        assertEquals(0, new BigDecimal("30.00").compareTo(delta(before.netAmount(), after.netAmount())));
         // 毛利 = 销售额 30 − 成本 12 = 18
-        assertEquals(0, new BigDecimal("18.00").compareTo(overview.grossProfit()));
-        assertEquals(0, new BigDecimal("15.00").compareTo(overview.avgOrderAmount()));
+        assertEquals(0, new BigDecimal("18.00").compareTo(delta(before.grossProfit(), after.grossProfit())));
+        // 客单价 = 净销售额 / 订单数（口径自洽性检查）
+        assertEquals(0, after.netAmount()
+                .divide(BigDecimal.valueOf(after.orderCount()), 2, java.math.RoundingMode.HALF_UP)
+                .compareTo(after.avgOrderAmount()));
     }
 
     @Test
@@ -87,16 +93,19 @@ class ReportFlowTest {
         ProductDtos.View product = createProduct("报表商品B", 20, "10.00", "4.00");
         SalesDtos.View order = saleService.checkout(storeId, request(
                 List.of(new SalesDtos.ItemRequest(product.id(), 2, null)), BigDecimal.ZERO));
+        ReportDtos.Overview afterSale = reportService.overview(storeId, LocalDate.now());
+
         saleService.refund(storeId, order.id(), new SalesDtos.RefundRequest(
                 List.of(new SalesDtos.RefundItemRequest(order.items().get(0).id(), 1)), "退 1 件"));
+        ReportDtos.Overview afterRefund = reportService.overview(storeId, LocalDate.now());
 
-        ReportDtos.Overview overview = reportService.overview(storeId, LocalDate.now());
-
-        assertEquals(0, new BigDecimal("20.00").compareTo(overview.salesAmount()));
-        assertEquals(0, new BigDecimal("10.00").compareTo(overview.refundAmount()));
-        assertEquals(0, new BigDecimal("10.00").compareTo(overview.netAmount()));
-        // 毛利 = (20 − 8) − (10 − 4) = 6
-        assertEquals(0, new BigDecimal("6.00").compareTo(overview.grossProfit()), "退款必须把对应成本也扣回来");
+        assertEquals(0, BigDecimal.ZERO.compareTo(delta(afterRefund.salesAmount(), afterSale.salesAmount())),
+                "销售额不因退货而变（退货体现在退款额上）");
+        assertEquals(0, new BigDecimal("10.00").compareTo(delta(afterSale.refundAmount(), afterRefund.refundAmount())));
+        assertEquals(0, new BigDecimal("10.00").compareTo(delta(afterSale.netAmount(), afterRefund.netAmount()).negate()));
+        // 毛利变化 = −(退款额 − 已退成本) = −(10 − 4) = −6
+        assertEquals(0, new BigDecimal("-6.00").compareTo(delta(afterSale.grossProfit(), afterRefund.grossProfit())),
+                "退款必须把对应成本也扣回来");
     }
 
     @Test
@@ -118,9 +127,11 @@ class ReportFlowTest {
 
         List<ReportDtos.DailyRow> summaries = reportService.dailySummaries(storeId, today, today);
         assertEquals(1, summaries.size());
-        assertEquals(0, new BigDecimal("20.00").compareTo(summaries.get(0).salesAmount()));
         ReportDtos.Overview live = reportService.overview(storeId, today);
-        assertEquals(0, live.netAmount().compareTo(summaries.get(0).netAmount()), "汇总口径与实时口径必须一致");
+        assertEquals(0, live.salesAmount().compareTo(summaries.get(0).salesAmount()), "汇总口径与实时口径必须一致");
+        assertEquals(0, live.netAmount().compareTo(summaries.get(0).netAmount()));
+        assertEquals(0, live.grossProfit().compareTo(summaries.get(0).grossProfit()));
+        assertEquals(live.orderCount(), summaries.get(0).orderCount());
     }
 
     @Test
@@ -180,6 +191,11 @@ class ReportFlowTest {
     private SalesDtos.CheckoutRequest request(List<SalesDtos.ItemRequest> items, BigDecimal discount) {
         return new SalesDtos.CheckoutRequest("REQ-" + java.util.UUID.randomUUID(), "散客", items,
                 discount, SaleOrder.PAY_CASH, null);
+    }
+
+    /** 两次快照之间的增量：测试共享同一个库，只有增量才有可比性。 */
+    private BigDecimal delta(BigDecimal before, BigDecimal after) {
+        return after.subtract(before).setScale(2, java.math.RoundingMode.HALF_UP);
     }
 
     private ProductDtos.View createProduct(String name, int initStock, String salePrice, String purchasePrice) {
