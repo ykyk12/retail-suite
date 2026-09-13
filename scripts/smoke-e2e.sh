@@ -9,12 +9,16 @@
 # 依赖：curl、jq（GitHub Actions 与主流发行版自带）
 # 退出码：0 = 全部通过；1 = 有失败项
 # 注意：会真实写入数据（商品/采购单/销售单），请在演示或测试环境执行。
+#
+# 账号变量刻意用 SMOKE_USERNAME/SMOKE_PASSWORD：Windows 上 USERNAME 是系统登录名（如 yk），
+# Git Bash 会把它继承进来，若脚本读 USERNAME 就会拿系统用户名去登录（实测报「用户名或密码错误」）。
+# Linux/CI 没有这个变量，所以这个坑只在 Windows 本地跑时出现。
 
 set -uo pipefail
 
 BASE_URL="${BASE_URL:-http://localhost:8080}"
-USERNAME="${USERNAME:-admin}"
-PASSWORD="${PASSWORD:-admin123}"
+SMOKE_USERNAME="${SMOKE_USERNAME:-admin}"
+SMOKE_PASSWORD="${SMOKE_PASSWORD:-admin123}"
 
 pass=0
 fail=0
@@ -24,18 +28,30 @@ ok() { pass=$((pass + 1)); printf '\033[32m[PASS]\033[0m %s\n' "$1"; }
 ko() { fail=$((fail + 1)); failures+=("$1 :: $2"); printf '\033[31m[FAIL]\033[0m %s :: %s\n' "$1" "$2"; }
 
 # 发请求：api <METHOD> <PATH> [BODY] [TOKEN] -> 设置 STATUS 与 BODY
+#
+# 请求体刻意走 stdin（--data-binary @-）而不是 -d "$body"：
+# Git Bash（MSYS2）会把命令行参数经 Windows API 转成 UTF-16 再按系统 ANSI 代码页（cp936）还原，
+# 于是参数里的中文进到 curl 时已经变成 GBK 字节，服务端 Jackson 直接报
+# 「Invalid UTF-8 middle byte 0xcc」→ 500。走 stdin 是二进制透传，不受这层转换影响。
 api() {
   local method="$1" path="$2" body="${3:-}" token="${4:-}" auth=()
   if [ -n "$token" ]; then auth=(-H "Authorization: Bearer $token"); fi
   local raw
   if [ -n "$body" ]; then
     # ${auth[@]+"${auth[@]}"} 是为了兼容 set -u 下空数组展开（bash < 4.4 会报未绑定变量）
-    raw=$(curl -sS -X "$method" "$BASE_URL$path" -H "Content-Type: application/json" ${auth[@]+"${auth[@]}"} -d "$body" -w $'\n%{http_code}')
+    raw=$(printf '%s' "$body" | curl -sS -X "$method" "$BASE_URL$path" -H "Content-Type: application/json" ${auth[@]+"${auth[@]}"} --data-binary @- -w $'\n%{http_code}')
   else
     raw=$(curl -sS -X "$method" "$BASE_URL$path" ${auth[@]+"${auth[@]}"} -w $'\n%{http_code}')
   fi
   STATUS="${raw##*$'\n'}"
   BODY="${raw%$'\n'*}"
+}
+
+# 取值：jq -r 的输出在 Windows（Git Bash + Windows 版 jq）会带 \r，
+# 直接塞进 URL 或 Authorization 头会被服务端当成非法内容（实测报「令牌格式不合法」）。
+# 统一剥掉 \r\n，让这个脚本在 Linux/CI 与 Git Bash 下行为一致。
+jqv() {
+  echo "$BODY" | jq -r "$1" | tr -d '\r\n'
 }
 
 # expect <描述> <期望状态码> <断言函数/jq 表达式>；断言用 jq -e 表达式，非 true 即失败
@@ -62,18 +78,18 @@ api GET /api/products
 check "未登录访问受保护接口返回 401" 401 '.code == "UNAUTHORIZED"'
 
 # ---------- 2. 登录 ----------
-api POST /api/auth/login "{\"username\":\"$USERNAME\",\"password\":\"$PASSWORD\"}"
+api POST /api/auth/login "{\"username\":\"$SMOKE_USERNAME\",\"password\":\"$SMOKE_PASSWORD\"}"
 check "登录获取令牌与权限" 200 '.success == true and (.data.token | length > 20) and (.data.user.permissions | length >= 5)'
-TOKEN=$(echo "$BODY" | jq -r '.data.token')
+TOKEN=$(jqv '.data.token')
 
 api GET /api/auth/me "" "$TOKEN"
-check "当前用户信息" 200 ".data.username == \"$USERNAME\""
+check "当前用户信息" 200 ".data.username == \"$SMOKE_USERNAME\""
 
 # ---------- 3. 建档（期初库存 5，阈值 10 → 应进入低库存） ----------
 BARCODE="69$(date +%s%N | tail -c 12)"
 api POST /api/products "{\"name\":\"冒烟测试商品\",\"barcode\":\"$BARCODE\",\"spec\":\"500ml\",\"unit\":\"瓶\",\"purchasePrice\":2.00,\"salePrice\":3.50,\"initStock\":5,\"lowStockThreshold\":10}" "$TOKEN"
 check "新建商品并写入期初库存" 200 '.data.stock == 5 and .data.lowStock == true'
-PRODUCT_ID=$(echo "$BODY" | jq -r '.data.id')
+PRODUCT_ID=$(jqv '.data.id')
 
 api GET "/api/inventory/flows/$PRODUCT_ID?limit=10" "" "$TOKEN"
 check "库存流水记录了期初建库" 200 '.data[0].type == "IN" and .data[0].beforeStock == 0'
@@ -84,7 +100,7 @@ check "低库存预警包含该商品" 200 ".data | map(.productId) | index($PRO
 # ---------- 4. 采购：录单不动库存 → 确认入库 ----------
 api POST /api/purchases "{\"supplierName\":\"冒烟供应商\",\"remark\":\"冒烟测试\",\"items\":[{\"productId\":$PRODUCT_ID,\"quantity\":20,\"unitCost\":2.00}]}" "$TOKEN"
 check "采购单保存为草稿" 200 '.data.status == "DRAFT"'
-PURCHASE_ID=$(echo "$BODY" | jq -r '.data.id')
+PURCHASE_ID=$(jqv '.data.id')
 
 api GET "/api/products/$PRODUCT_ID" "" "$TOKEN"
 check "草稿状态不改动库存" 200 '.data.stock == 5'
@@ -103,9 +119,9 @@ REQ_ID="SMOKE-$(date +%s%N)"
 CHECKOUT="{\"requestId\":\"$REQ_ID\",\"customerName\":\"冒烟顾客\",\"items\":[{\"productId\":$PRODUCT_ID,\"quantity\":3}],\"discountAmount\":0,\"payMethod\":\"WECHAT\"}"
 api POST /api/sales/checkout "$CHECKOUT" "$TOKEN"
 check "收银结算（应收 10.50）" 200 '.data.payAmount == 10.50'
-ORDER_NO=$(echo "$BODY" | jq -r '.data.orderNo')
-SALE_ID=$(echo "$BODY" | jq -r '.data.id')
-ORDER_ITEM_ID=$(echo "$BODY" | jq -r '.data.items[0].id')
+ORDER_NO=$(jqv '.data.orderNo')
+SALE_ID=$(jqv '.data.id')
+ORDER_ITEM_ID=$(jqv '.data.items[0].id')
 
 api GET "/api/products/$PRODUCT_ID" "" "$TOKEN"
 check "收银后库存扣到 22" 200 '.data.stock == 22'
@@ -138,9 +154,9 @@ check "经营概览有成交数据" 200 '.data.orderCount >= 1 and (.data.netAmo
 
 TODAY=$(date +%F)
 api POST "/api/reports/daily/$TODAY/rebuild" "" "$TOKEN"
-NET1=$(echo "$BODY" | jq -r '.data.netAmount')
+NET1=$(jqv '.data.netAmount')
 api POST "/api/reports/daily/$TODAY/rebuild" "" "$TOKEN"
-NET2=$(echo "$BODY" | jq -r '.data.netAmount')
+NET2=$(jqv '.data.netAmount')
 if [ "$NET1" = "$NET2" ]; then ok "日汇总重算幂等（两次结果一致）"; else ko "日汇总重算幂等" "两次结果不一致：$NET1 vs $NET2"; fi
 
 api GET /api/reports/reconcile "" "$TOKEN"
@@ -149,7 +165,7 @@ check "对账一致（销售数量 = 库存出库数量）" 200 '.data.consisten
 # ---------- 8. AI 录单与助手 ----------
 api POST /api/ai/drafts '{"text":"进了 6 瓶冒烟测试商品 单价 2.0","type":"PURCHASE"}' "$TOKEN"
 check "自然语言解析为草稿（待确认）" 200 '.data.status == "PENDING" and .data.items[0].resolved == true'
-DRAFT_ID=$(echo "$BODY" | jq -r '.data.id')
+DRAFT_ID=$(jqv '.data.id')
 
 api POST "/api/ai/drafts/$DRAFT_ID/confirm" '{"supplierName":"冒烟供应商"}' "$TOKEN"
 check "人工确认生成采购单（不改库存）" 200 '.data.status == "CONFIRMED" and (.data.createdRefNo | length > 4)'
@@ -159,13 +175,13 @@ check "AI 草稿确认不改动库存" 200 '.data.stock == 23'
 
 api POST /api/ai/drafts '{"text":"进了 3 瓶根本不存在的饮料","type":"PURCHASE"}' "$TOKEN"
 check "识别不出的商品被标注而非瞎猜" 200 '.data.hasUnresolved == true'
-BAD_DRAFT_ID=$(echo "$BODY" | jq -r '.data.id')
+BAD_DRAFT_ID=$(jqv '.data.id')
 
 api POST "/api/ai/drafts/$BAD_DRAFT_ID/confirm" '{}' "$TOKEN"
 check "未识别草稿确认被拒绝" 400 '.code == "BAD_REQUEST"'
 
 api POST /api/ai/drafts '{"text":"卖了 2 瓶冒烟测试商品","type":"SALE"}' "$TOKEN"
-SALE_DRAFT_ID=$(echo "$BODY" | jq -r '.data.id')
+SALE_DRAFT_ID=$(jqv '.data.id')
 api POST "/api/ai/drafts/$SALE_DRAFT_ID/confirm" '{}' "$TOKEN"
 check "销售类草稿必须走收银台" 400 '.message | contains("收银台")'
 

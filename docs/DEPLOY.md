@@ -107,11 +107,14 @@ docker compose logs -f backend | grep -E "Started|ERROR"
 | 一键转草稿提示没有权限 | 该动作走的是 Agent 写工具，需要 `purchase:write`；给角色加权限后重新登录（权限码写在令牌里） |
 | 导出 Excel 无响应 | 浏览器可能拦了下载；接口是带 Authorization 的 blob 下载，检查是否被代理去掉请求头 |
 | 端口 80 被占用 | 改 `docker-compose.yml` 里 frontend 的端口映射（如 `8081:80`） |
+| 启动报 `ports are not available ... 3306` | 本机已装 MySQL 占了 3306：把 compose 里 mysql 的映射改成 `127.0.0.1:13306:3306`（后端容器内仍连 `mysql:3306`，不受影响），或先停掉本机 MySQL |
+| `docker pull` 卡住 / 超时（国内网络） | 到 Docker Hub 的连接常被重置：在 `~/.docker/daemon.json` 加 `registry-mirrors`（如 `https://docker.m.daocloud.io`），重启引擎后看 `docker info` 的 Registry Mirrors 是否出现 |
+| Git Bash（Windows）跑冒烟脚本失败 | 脚本已按 Git Bash 适配：正文走 stdin、变量名避开 Windows 的 `USERNAME`；若仍失败，先把 `jq` 与 `curl` 放进取 PATH（`SMOKE_USERNAME/SMOKE_PASSWORD` 可覆盖默认账号） |
 
 ## 8. 不进 Docker 的部署方式
 
-后端：`mvn -DskipTests package` 得到 `target/retail-suite-1.3.0.jar`，
-`SPRING_PROFILES_ACTIVE=prod MYSQL_HOST=... JWT_SECRET=... java -jar retail-suite-1.3.0.jar`
+后端：`mvn -DskipTests package` 得到 `target/retail-suite-1.4.1.jar`，
+`SPRING_PROFILES_ACTIVE=prod MYSQL_HOST=... JWT_SECRET=... java -jar retail-suite-1.4.1.jar`
 
 前端：`cd frontend && npm ci && npm run build`，把 `dist/` 交给任意 Nginx/Apache，
 并把 `/api` 反代到后端（配置参考 `frontend/nginx.conf`）。
