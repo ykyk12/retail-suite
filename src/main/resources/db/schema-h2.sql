@@ -178,6 +178,8 @@ CREATE TABLE IF NOT EXISTS sale_order_item (
     quantity          INT           NOT NULL,
     refunded_quantity INT           NOT NULL DEFAULT 0,
     unit_price        DECIMAL(12,2) NOT NULL DEFAULT 0,
+    -- 冻结下单当时的成本价：毛利要用"当时的成本"算，而不是商品今天的进价（后者会随进货价波动而失真）
+    cost_price        DECIMAL(12,2) NOT NULL DEFAULT 0,
     amount            DECIMAL(12,2) NOT NULL DEFAULT 0,
     created_at        DATETIME      NOT NULL,
     deleted           TINYINT       NOT NULL DEFAULT 0

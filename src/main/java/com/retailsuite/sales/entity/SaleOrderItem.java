@@ -33,6 +33,9 @@ public class SaleOrderItem {
 
     private BigDecimal unitPrice;
 
+    /** 下单当时的成本价（冻结）：毛利必须用当时成本算，用商品今天的进价会失真 */
+    private BigDecimal costPrice;
+
     private BigDecimal amount;
 
     private LocalDateTime createdAt;

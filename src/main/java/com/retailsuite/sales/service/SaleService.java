@@ -162,6 +162,9 @@ public class SaleService {
             row.setQuantity(item.quantity());
             row.setRefundedQuantity(0);
             row.setUnitPrice(unitPrice);
+            // 冻结成本价：财务报表（毛利）以后不因商品改价而变
+            row.setCostPrice(product.getPurchasePrice() == null ? BigDecimal.ZERO
+                    : product.getPurchasePrice().setScale(2, RoundingMode.HALF_UP));
             row.setAmount(amount);
             row.setCreatedAt(now);
             row.setDeleted(0);
