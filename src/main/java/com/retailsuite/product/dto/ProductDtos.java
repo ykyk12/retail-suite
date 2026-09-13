@@ -36,7 +36,18 @@ public final class ProductDtos {
             @Min(value = 0, message = "期初库存不能为负")
             Integer initStock,
             @Min(value = 0, message = "预警阈值不能为负")
-            Integer lowStockThreshold) {
+            Integer lowStockThreshold,
+            /** 保质期天数：留空表示不追踪保质期（日用品）；有值时入库会按生产日期推算到期日 */
+            @Min(value = 0, message = "保质期天数不能为负")
+            Integer shelfLifeDays) {
+
+        /** 兼容不追踪保质期的调用（等价于 shelfLifeDays = null）。 */
+        public CreateRequest(String name, Long categoryId, String barcode, String spec, String unit,
+                             BigDecimal purchasePrice, BigDecimal salePrice, Integer initStock,
+                             Integer lowStockThreshold) {
+            this(name, categoryId, barcode, spec, unit, purchasePrice, salePrice, initStock,
+                    lowStockThreshold, null);
+        }
     }
 
     /** 修改商品：**刻意不含 stock**——库存只能通过库存服务变动，避免"改商品顺手把库存改了"这种账实不符。 */
@@ -59,7 +70,15 @@ public final class ProductDtos {
             BigDecimal salePrice,
             @Min(value = 0, message = "预警阈值不能为负")
             Integer lowStockThreshold,
+            Integer shelfLifeDays,
             Integer status) {
+
+        /** 兼容不带保质期与状态的调用。 */
+        public UpdateRequest(String name, Long categoryId, String barcode, String spec, String unit,
+                             BigDecimal purchasePrice, BigDecimal salePrice, Integer lowStockThreshold,
+                             Integer status) {
+            this(name, categoryId, barcode, spec, unit, purchasePrice, salePrice, lowStockThreshold, null, status);
+        }
     }
 
     public record View(Long id,
@@ -73,6 +92,7 @@ public final class ProductDtos {
                        BigDecimal salePrice,
                        Integer stock,
                        Integer lowStockThreshold,
+                       Integer shelfLifeDays,
                        boolean lowStock,
                        Integer status,
                        LocalDateTime updatedAt) {

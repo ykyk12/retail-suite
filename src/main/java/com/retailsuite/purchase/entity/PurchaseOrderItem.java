@@ -30,6 +30,11 @@ public class PurchaseOrderItem {
 
     private BigDecimal amount;
 
+    /** 生产日期 + 保质期天数：确认入库时据此生成批次与到期日（保质期为空则用商品档案的天数） */
+    private java.time.LocalDate productionDate;
+
+    private Integer shelfLifeDays;
+
     private LocalDateTime createdAt;
 
     @TableLogic

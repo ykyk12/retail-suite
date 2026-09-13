@@ -26,6 +26,10 @@ public class AppProperties {
     @Data
     public static class Inventory {
         private int defaultLowStockThreshold = 10;
+        /** 临期预警阈值（天）：到期日在 N 天内视为临期 */
+        private int expiryAlertDays = 30;
+        /** 滞销判定天数：连续 N 天没有销售视为滞销（管家巡检用） */
+        private int slowMovingDays = 30;
     }
 
     @Data

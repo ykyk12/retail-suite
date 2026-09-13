@@ -42,6 +42,9 @@ public class InventoryFlow {
 
     private String remark;
 
+    /** 关联批次：有批次管理的商品，出库/报损能追到具体是哪一批货 */
+    private Long batchId;
+
     private Long operatorId;
 
     private LocalDateTime createdAt;

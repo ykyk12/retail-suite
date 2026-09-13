@@ -86,6 +86,8 @@ CREATE TABLE IF NOT EXISTS product (
     sale_price          DECIMAL(12,2) NOT NULL DEFAULT 0,
     stock               INT           NOT NULL DEFAULT 0,
     low_stock_threshold INT           NOT NULL DEFAULT 10,
+    -- 保质期天数：NULL 表示不追踪保质期（如日用品）；有值时入库必须登记生产日期
+    shelf_life_days     INT,
     status              TINYINT       NOT NULL DEFAULT 1,
     version             INT           NOT NULL DEFAULT 0,
     created_at          DATETIME      NOT NULL,
@@ -107,6 +109,8 @@ CREATE TABLE IF NOT EXISTS inventory_flow (
     ref_type     VARCHAR(16),
     ref_no       VARCHAR(64),
     remark       VARCHAR(200),
+    -- 关联批次：出库/报损能追到具体是哪一批货（有批次管理时必填）
+    batch_id     BIGINT,
     operator_id  BIGINT,
     created_at   DATETIME     NOT NULL,
     deleted      TINYINT      NOT NULL DEFAULT 0
@@ -140,6 +144,9 @@ CREATE TABLE IF NOT EXISTS purchase_order_item (
     quantity     INT           NOT NULL,
     unit_cost    DECIMAL(12,2) NOT NULL DEFAULT 0,
     amount       DECIMAL(12,2) NOT NULL DEFAULT 0,
+    -- 进货批次信息：生产日期与保质期（保质期为空则用商品档案上的保质期天数推算到期日）
+    production_date DATE,
+    shelf_life_days INT,
     created_at   DATETIME      NOT NULL,
     deleted      TINYINT       NOT NULL DEFAULT 0
 );
@@ -232,3 +239,39 @@ CREATE TABLE IF NOT EXISTS ai_draft (
     deleted        TINYINT     NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_ai_draft_store_created ON ai_draft (store_id, created_at);
+
+-- ============================================================================
+-- 批次与保质期（M1）：食品/生鲜门店必须按批次管理到期日，出库按先进先出（FIFO）
+-- 设计要点：
+--   1) product.stock 仍是聚合库存（收银扣减走条件更新，性能最好）；
+--      product_batch 记录每一批的剩余数量与到期日，两者由库存服务在同一事务内同步；
+--   2) 出库按"最早到期优先"扣批次（近效期先出，减少报损），与纯 FIFO 按入库时间相比更符合食品零售；
+--   3) 到期日 = 生产日期 + 保质期天数；未登记生产日期的批次 expiry_date 为空（如日用品）；
+--   4) 一致性由对账接口校验：Σ批次数量 必须等于 product.stock。
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS product_batch (
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+    store_id        BIGINT        NOT NULL,
+    product_id      BIGINT        NOT NULL,
+    batch_no        VARCHAR(64)   NOT NULL,
+    production_date DATE,
+    expiry_date     DATE,
+    quantity        INT           NOT NULL DEFAULT 0,
+    cost_price      DECIMAL(12,2) NOT NULL DEFAULT 0,
+    purchase_order_id BIGINT,
+    remark          VARCHAR(200),
+    created_at      DATETIME      NOT NULL,
+    updated_at      DATETIME      NOT NULL,
+    deleted         TINYINT       NOT NULL DEFAULT 0
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_batch_store_no ON product_batch (store_id, batch_no);
+CREATE INDEX IF NOT EXISTS idx_batch_product_expiry ON product_batch (product_id, expiry_date);
+
+-- ============================================================================
+-- 幂等升级语句：让已有的本地 H2 文件库也能升上来（新建库时这些语句是无操作）
+-- MySQL 侧见 deploy/mysql/migration/（MySQL 8 不支持 ADD COLUMN IF NOT EXISTS）
+-- ============================================================================
+ALTER TABLE product ADD COLUMN IF NOT EXISTS shelf_life_days INT;
+ALTER TABLE inventory_flow ADD COLUMN IF NOT EXISTS batch_id BIGINT;
+ALTER TABLE purchase_order_item ADD COLUMN IF NOT EXISTS production_date DATE;
+ALTER TABLE purchase_order_item ADD COLUMN IF NOT EXISTS shelf_life_days INT;

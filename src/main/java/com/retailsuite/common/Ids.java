@@ -24,4 +24,10 @@ public final class Ids {
         String tail = UUID.randomUUID().toString().replace("-", "").substring(0, 4).toUpperCase();
         return prefix + LocalDateTime.now().format(ORDER_FORMAT) + tail;
     }
+
+    /** 批次号：B + 时间 + 4 位随机，可直接打印在货架标签上人工核对。 */
+    public static String batchNo() {
+        String tail = UUID.randomUUID().toString().replace("-", "").substring(0, 4).toUpperCase();
+        return "B" + LocalDateTime.now().format(ORDER_FORMAT) + tail;
+    }
 }

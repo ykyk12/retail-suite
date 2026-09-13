@@ -85,6 +85,10 @@ app:
   inventory:
     # 库存低于该值的商品在预警列表中出现（可按商品覆盖 low_stock_threshold）
     default-low-stock-threshold: 10
+    # 临期预警阈值（天）：到期日在 N 天内视为临期
+    expiry-alert-days: ${EXPIRY_ALERT_DAYS:30}
+    # 滞销判定天数：连续 N 天无销售视为滞销（管家巡检用）
+    slow-moving-days: 30
   order:
     # 单笔订单最多几个明细行（防误操作/恶意构造）
     max-items-per-order: 200

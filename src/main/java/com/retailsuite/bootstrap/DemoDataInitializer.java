@@ -52,31 +52,32 @@ public class DemoDataInitializer implements ApplicationRunner {
     static {
         ROLE_PERMISSIONS.put("ADMIN", List.of(
                 "product:read", "product:write", "category:write",
-                "inventory:read", "inventory:adjust",
+                "inventory:read", "inventory:adjust", "inventory:loss",
                 "purchase:read", "purchase:write",
                 "sale:create", "sale:read", "refund:create",
                 "report:read", "user:manage", "audit:read", "ai:use"));
         ROLE_PERMISSIONS.put("CASHIER", List.of(
-                "product:read", "inventory:read",
+                "product:read", "inventory:read", "inventory:loss",
                 "sale:create", "sale:read", "refund:create",
                 "report:read", "ai:use"));
     }
 
-    /** 演示商品（生鲜除外，条码为真实 EAN-13 形态，便于扫码枪测试）。 */
+    /** 演示商品（条码为真实 EAN-13 形态，便于扫码枪测试；饮料/零食带保质期天数）。 */
     private record DemoProduct(String name, String category, String barcode, String spec, String unit,
-                               String purchasePrice, String salePrice, int stock, int threshold) {
+                               String purchasePrice, String salePrice, int stock, int threshold,
+                               Integer shelfLifeDays) {
     }
 
     private static final List<DemoProduct> DEMO_PRODUCTS = List.of(
-            new DemoProduct("农夫山泉 550ml", "饮料", "6921168509256", "550ml", "瓶", "1.20", "2.00", 120, 20),
-            new DemoProduct("可口可乐 330ml", "饮料", "6928804011153", "330ml", "罐", "2.30", "3.50", 80, 20),
-            new DemoProduct("东方树叶 500ml", "饮料", "6921168594849", "500ml", "瓶", "3.50", "5.00", 40, 10),
-            new DemoProduct("乐事薯片 原味 70g", "零食", "6924743915848", "70g", "袋", "4.20", "6.50", 35, 10),
-            new DemoProduct("奥利奥饼干 116g", "零食", "6901668005628", "116g", "盒", "5.80", "8.50", 25, 10),
+            new DemoProduct("农夫山泉 550ml", "饮料", "6921168509256", "550ml", "瓶", "1.20", "2.00", 120, 20, 365),
+            new DemoProduct("可口可乐 330ml", "饮料", "6928804011153", "330ml", "罐", "2.30", "3.50", 80, 20, 270),
+            new DemoProduct("东方树叶 500ml", "饮料", "6921168594849", "500ml", "瓶", "3.50", "5.00", 40, 10, 270),
+            new DemoProduct("乐事薯片 原味 70g", "零食", "6924743915848", "70g", "袋", "4.20", "6.50", 35, 10, 180),
+            new DemoProduct("奥利奥饼干 116g", "零食", "6901668005628", "116g", "盒", "5.80", "8.50", 25, 10, 180),
             // 下面两个刻意低库存：用于演示「库存预警」与「一句话补货」
-            new DemoProduct("徐福记沙琪玛", "零食", "6901285991219", "160g", "包", "6.00", "9.00", 8, 10),
-            new DemoProduct("抽纸 三层 120抽", "日用", "6922255451427", "120抽", "包", "3.00", "4.50", 60, 15),
-            new DemoProduct("一次性纸杯 50只", "日用", "6934567890125", "50只", "提", "5.00", "8.00", 4, 10));
+            new DemoProduct("徐福记沙琪玛", "零食", "6901285991219", "160g", "包", "6.00", "9.00", 8, 10, 120),
+            new DemoProduct("抽纸 三层 120抽", "日用", "6922255451427", "120抽", "包", "3.00", "4.50", 60, 15, null),
+            new DemoProduct("一次性纸杯 50只", "日用", "6934567890125", "50只", "提", "5.00", "8.00", 4, 10, null));
 
     private final StoreMapper storeMapper;
     private final SysUserMapper sysUserMapper;
@@ -173,7 +174,7 @@ public class DemoDataInitializer implements ApplicationRunner {
             productService.create(storeId, new ProductDtos.CreateRequest(
                     demo.name(), categoryIds.get(demo.category()), demo.barcode(), demo.spec(), demo.unit(),
                     new BigDecimal(demo.purchasePrice()), new BigDecimal(demo.salePrice()),
-                    demo.stock(), demo.threshold()));
+                    demo.stock(), demo.threshold(), demo.shelfLifeDays()));
         }
         log.info("已写入 {} 个演示商品（含期初库存流水）", DEMO_PRODUCTS.size());
     }

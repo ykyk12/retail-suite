@@ -52,6 +52,9 @@ public class Product {
     /** 低于该值进入库存预警 */
     private Integer lowStockThreshold;
 
+    /** 保质期天数：NULL 表示不追踪保质期（日用品等）；有值时入库需登记生产日期以推算到期日 */
+    private Integer shelfLifeDays;
+
     /** 1 在售 / 0 停售 */
     private Integer status;
 

@@ -217,6 +217,6 @@ class ProductInventoryTest {
     private InventoryDtos.FlowView toFlowView(com.retailsuite.inventory.entity.InventoryFlow flow) {
         return new InventoryDtos.FlowView(flow.getId(), flow.getProductId(), null, flow.getType(),
                 flow.getQuantity(), flow.getBeforeStock(), flow.getAfterStock(), flow.getRefType(),
-                flow.getRefNo(), flow.getRemark(), flow.getCreatedAt());
+                flow.getRefNo(), flow.getRemark(), flow.getBatchId(), flow.getCreatedAt());
     }
 }

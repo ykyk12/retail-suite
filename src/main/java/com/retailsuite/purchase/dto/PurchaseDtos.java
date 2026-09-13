@@ -35,7 +35,17 @@ public final class PurchaseDtos {
             Integer quantity,
             @NotNull(message = "进价不能为空")
             @DecimalMin(value = "0", message = "进价不能为负")
-            BigDecimal unitCost) {
+            BigDecimal unitCost,
+            /** 生产日期（保质期商品建议填：到期日 = 生产日期 + 保质期天数） */
+            java.time.LocalDate productionDate,
+            /** 保质期天数（留空则用商品档案上的保质期） */
+            @Min(value = 0, message = "保质期天数不能为负")
+            Integer shelfLifeDays) {
+
+        /** 兼容旧的三参数调用（不带批次信息）。 */
+        public ItemRequest(Long productId, Integer quantity, BigDecimal unitCost) {
+            this(productId, quantity, unitCost, null, null);
+        }
     }
 
     public record ItemView(Long id,
@@ -43,7 +53,9 @@ public final class PurchaseDtos {
                            String productName,
                            Integer quantity,
                            BigDecimal unitCost,
-                           BigDecimal amount) {
+                           BigDecimal amount,
+                           java.time.LocalDate productionDate,
+                           Integer shelfLifeDays) {
     }
 
     public record View(Long id,

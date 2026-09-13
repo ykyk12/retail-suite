@@ -57,13 +57,19 @@ public class PurchaseService {
             throw new BizException(ErrorCode.BAD_REQUEST, "单张采购单最多 " + maxItems + " 行明细");
         }
 
-        // 合并同商品明细（数量相加，单价取最后一次录入）
+        // 合并同商品明细（数量相加，单价取最后一次录入；批次信息取"先到者优先填、后者可覆盖"）
         Map<Long, PurchaseDtos.ItemRequest> merged = new LinkedHashMap<>();
         for (PurchaseDtos.ItemRequest item : request.items()) {
             PurchaseDtos.ItemRequest previous = merged.get(item.productId());
-            merged.put(item.productId(), previous == null ? item
-                    : new PurchaseDtos.ItemRequest(item.productId(),
-                    previous.quantity() + item.quantity(), item.unitCost()));
+            if (previous == null) {
+                merged.put(item.productId(), item);
+            } else {
+                merged.put(item.productId(), new PurchaseDtos.ItemRequest(item.productId(),
+                        previous.quantity() + item.quantity(),
+                        item.unitCost(),
+                        item.productionDate() != null ? item.productionDate() : previous.productionDate(),
+                        item.shelfLifeDays() != null ? item.shelfLifeDays() : previous.shelfLifeDays()));
+            }
         }
 
         PurchaseOrder order = new PurchaseOrder();
@@ -91,6 +97,8 @@ public class PurchaseService {
             row.setQuantity(item.quantity());
             row.setUnitCost(item.unitCost().setScale(2, RoundingMode.HALF_UP));
             row.setAmount(amount);
+            row.setProductionDate(item.productionDate());
+            row.setShelfLifeDays(item.shelfLifeDays());
             row.setCreatedAt(LocalDateTime.now());
             row.setDeleted(0);
             items.add(row);
@@ -125,8 +133,11 @@ public class PurchaseService {
 
         List<PurchaseOrderItem> items = itemMapper.listByOrder(orderId);
         for (PurchaseOrderItem item : items) {
+            // 批次信息随入库一起落库：到期日 = 生产日期 + 保质期（服务层按商品档案兜底）
             inventoryService.increase(storeId, item.getProductId(), item.getQuantity(),
-                    "PURCHASE", order.getOrderNo(), "采购入库：" + order.getOrderNo());
+                    "PURCHASE", order.getOrderNo(), "采购入库：" + order.getOrderNo(),
+                    new InventoryService.BatchInbound(item.getProductionDate(), item.getShelfLifeDays(),
+                            item.getUnitCost(), order.getId(), "采购单 " + order.getOrderNo()));
         }
         auditService.record("PURCHASE_CONFIRM", "purchase_order", order.getOrderNo(),
                 "确认入库，明细 " + items.size() + " 行，金额 " + order.getTotalAmount());
@@ -188,7 +199,8 @@ public class PurchaseService {
         List<PurchaseDtos.ItemView> itemViews = new ArrayList<>(items.size());
         for (PurchaseOrderItem item : items) {
             itemViews.add(new PurchaseDtos.ItemView(item.getId(), item.getProductId(), item.getProductName(),
-                    item.getQuantity(), item.getUnitCost(), item.getAmount()));
+                    item.getQuantity(), item.getUnitCost(), item.getAmount(),
+                    item.getProductionDate(), item.getShelfLifeDays()));
         }
         return new PurchaseDtos.View(order.getId(), order.getOrderNo(), order.getSupplierName(),
                 order.getItemCount(), order.getTotalAmount(), order.getStatus(), statusText(order.getStatus()),

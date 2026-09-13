@@ -24,14 +24,15 @@ INSERT INTO sys_role (code, name, description, created_at, updated_at, deleted) 
   ('CASHIER', '收银员',      '收银、退货、查库存与报表', NOW(), NOW(), 0);
 
 -- 权限码：模块:动作。收银员刻意不给用户管理、库存调整、采购写权限（最小权限原则）
+-- inventory:loss 是报损（临期/破损下架）：收银员在货架前端发现临期品，允许其报损
 INSERT INTO sys_role_permission (role_code, permission_code) VALUES
   ('ADMIN', 'product:read'), ('ADMIN', 'product:write'), ('ADMIN', 'category:write'),
-  ('ADMIN', 'inventory:read'), ('ADMIN', 'inventory:adjust'),
+  ('ADMIN', 'inventory:read'), ('ADMIN', 'inventory:adjust'), ('ADMIN', 'inventory:loss'),
   ('ADMIN', 'purchase:read'), ('ADMIN', 'purchase:write'),
   ('ADMIN', 'sale:create'), ('ADMIN', 'sale:read'), ('ADMIN', 'refund:create'),
   ('ADMIN', 'report:read'), ('ADMIN', 'user:manage'), ('ADMIN', 'audit:read'), ('ADMIN', 'ai:use'),
   ('CASHIER', 'product:read'),
-  ('CASHIER', 'inventory:read'),
+  ('CASHIER', 'inventory:read'), ('CASHIER', 'inventory:loss'),
   ('CASHIER', 'sale:create'), ('CASHIER', 'sale:read'), ('CASHIER', 'refund:create'),
   ('CASHIER', 'report:read'), ('CASHIER', 'ai:use');
 
@@ -89,3 +90,13 @@ INSERT INTO inventory_flow (store_id, product_id, type, quantity, before_stock, 
                             ref_type, ref_no, remark, operator_id, created_at, deleted)
 SELECT p.store_id, p.id, 'IN', p.stock, 0, p.stock, 'MANUAL', NULL, '期初建账', NULL, NOW(), 0
 FROM product p;
+
+-- 保质期天数（饮料/零食追踪到期日，日用品不追踪）。
+-- 说明：这里只设置商品档案上的保质期天数；由于期初库存是 SQL 直接写入的（没有走库存服务），
+-- 它还不会生成批次。首次部署后请对这类商品做一次「盘点调整」或确认一张「采购单」，
+-- 库存才会落到具体批次上，随后可用 GET /api/inventory/batch-mismatch 核对是否一致。
+UPDATE product SET shelf_life_days = 365 WHERE shelf_life_days IS NULL AND name LIKE '%农夫山泉%';
+UPDATE product SET shelf_life_days = 270 WHERE shelf_life_days IS NULL AND name LIKE '%可乐%';
+UPDATE product SET shelf_life_days = 270 WHERE shelf_life_days IS NULL AND name LIKE '%东方树叶%';
+UPDATE product SET shelf_life_days = 180 WHERE shelf_life_days IS NULL AND (name LIKE '%乐事%' OR name LIKE '%奥利奥%');
+UPDATE product SET shelf_life_days = 120 WHERE shelf_life_days IS NULL AND name LIKE '%沙琪玛%';

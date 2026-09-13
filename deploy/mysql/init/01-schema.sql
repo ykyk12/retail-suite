@@ -83,6 +83,7 @@ CREATE TABLE IF NOT EXISTS product (
     sale_price          DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT '售价',
     stock               INT           NOT NULL DEFAULT 0 COMMENT '当前库存，只能由库存服务变更',
     low_stock_threshold INT           NOT NULL DEFAULT 10,
+    shelf_life_days     INT COMMENT '保质期天数；NULL 表示不追踪保质期（日用品）',
     status              TINYINT       NOT NULL DEFAULT 1 COMMENT '1 在售 / 0 停售',
     version             INT           NOT NULL DEFAULT 0 COMMENT '乐观锁版本',
     created_at          DATETIME      NOT NULL,
@@ -104,6 +105,7 @@ CREATE TABLE IF NOT EXISTS inventory_flow (
     ref_type     VARCHAR(16) COMMENT 'PURCHASE / SALE / REFUND / MANUAL',
     ref_no       VARCHAR(64) COMMENT '来源单号',
     remark       VARCHAR(200),
+    batch_id     BIGINT COMMENT '关联批次（有批次管理时必填）',
     operator_id  BIGINT,
     created_at   DATETIME    NOT NULL,
     deleted      TINYINT     NOT NULL DEFAULT 0,
@@ -137,6 +139,8 @@ CREATE TABLE IF NOT EXISTS purchase_order_item (
     quantity     INT           NOT NULL,
     unit_cost    DECIMAL(12,2) NOT NULL DEFAULT 0,
     amount       DECIMAL(12,2) NOT NULL DEFAULT 0,
+    production_date DATE COMMENT '生产日期（到期日 = 生产日期 + 保质期）',
+    shelf_life_days INT COMMENT '保质期天数，留空用商品档案',
     created_at   DATETIME      NOT NULL,
     deleted      TINYINT       NOT NULL DEFAULT 0,
     KEY idx_purchase_item_order (order_id)
@@ -226,3 +230,22 @@ CREATE TABLE IF NOT EXISTS ai_draft (
     deleted        TINYINT     NOT NULL DEFAULT 0,
     KEY idx_ai_draft_store_created (store_id, created_at)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT 'AI 录单草稿';
+
+-- 批次与保质期：出库按"近效期先出"（FEFO）扣减，减少报损
+CREATE TABLE IF NOT EXISTS product_batch (
+    id                BIGINT AUTO_INCREMENT PRIMARY KEY,
+    store_id          BIGINT        NOT NULL,
+    product_id        BIGINT        NOT NULL,
+    batch_no          VARCHAR(64)   NOT NULL,
+    production_date   DATE,
+    expiry_date       DATE COMMENT '到期日 = 生产日期 + 保质期天数',
+    quantity          INT           NOT NULL DEFAULT 0 COMMENT '该批次剩余数量',
+    cost_price        DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT '该批次成本价（毛利按实际批次成本算）',
+    purchase_order_id BIGINT,
+    remark            VARCHAR(200),
+    created_at        DATETIME      NOT NULL,
+    updated_at        DATETIME      NOT NULL,
+    deleted           TINYINT       NOT NULL DEFAULT 0,
+    UNIQUE KEY uk_batch_store_no (store_id, batch_no),
+    KEY idx_batch_product_expiry (product_id, expiry_date)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT '商品批次（保质期管理）';

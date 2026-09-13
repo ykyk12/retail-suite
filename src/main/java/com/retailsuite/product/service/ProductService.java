@@ -85,6 +85,8 @@ public class ProductService {
         product.setStock(0);
         product.setLowStockThreshold(request.lowStockThreshold() == null
                 ? properties.getInventory().getDefaultLowStockThreshold() : request.lowStockThreshold());
+        // 保质期天数：空表示不追踪（日用品），有值时入库会按生产日期推算到期日
+        product.setShelfLifeDays(request.shelfLifeDays());
         product.setStatus(1);
         product.setVersion(0);
         product.setCreatedAt(LocalDateTime.now());
@@ -118,6 +120,7 @@ public class ProductService {
         if (request.lowStockThreshold() != null) {
             update.setLowStockThreshold(request.lowStockThreshold());
         }
+        update.setShelfLifeDays(request.shelfLifeDays());
         if (request.status() != null) {
             update.setStatus(request.status());
         }
@@ -262,8 +265,8 @@ public class ProductService {
         int threshold = product.getLowStockThreshold() == null ? 0 : product.getLowStockThreshold();
         return new ProductDtos.View(product.getId(), product.getName(), product.getCategoryId(), categoryName,
                 product.getBarcode(), product.getSpec(), product.getUnit(), product.getPurchasePrice(),
-                product.getSalePrice(), stock, threshold, stock <= threshold, product.getStatus(),
-                product.getUpdatedAt());
+                product.getSalePrice(), stock, threshold, product.getShelfLifeDays(), stock <= threshold,
+                product.getStatus(), product.getUpdatedAt());
     }
 
     private String blankToNull(String value) {
