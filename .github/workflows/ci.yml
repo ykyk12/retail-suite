@@ -31,6 +31,34 @@ jobs:
           path: target/surefire-reports/
           if-no-files-found: ignore
 
-# 前端 job 等 frontend/ 工程落地后在这里追加（npm ci + npm run build）。
-# 注意：job 级 if 不能用 hashFiles()（求值时还没 checkout，工作区是空的），
-# 那样写会让整份 workflow 解析失败、连一个 job 都启动不了——这个坑已经踩过一次。
+  frontend:
+    name: frontend (type-check + build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+
+      - name: Type check
+        working-directory: frontend
+        run: npm run type-check
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+          if-no-files-found: ignore

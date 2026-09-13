@@ -1,0 +1,83 @@
+/* 全局样式：只放布局与打印相关，组件样式用 Element Plus + scoped 处理 */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  background: #f5f7fa;
+  font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif;
+}
+
+.page-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+
+.card-gap {
+  margin-bottom: 12px;
+}
+
+.money {
+  font-variant-numeric: tabular-nums;
+}
+
+.text-muted {
+  color: #909399;
+}
+
+.pos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.pos-item {
+  border: 1px solid #e4e7ed;
+  border-radius: 6px;
+  padding: 10px;
+  cursor: pointer;
+  background: #fff;
+  transition: all 0.15s;
+}
+
+.pos-item:hover {
+  border-color: #409eff;
+  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.2);
+}
+
+.pos-item .name {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.pos-item .price {
+  color: #f56c6c;
+  font-weight: 600;
+}
+
+/* 小票打印：只打印小票区域（收银台"打印小票"按钮用） */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  #receipt-print,
+  #receipt-print * {
+    visibility: visible;
+  }
+
+  #receipt-print {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 80mm;
+    padding: 4mm;
+    font-size: 12px;
+  }
+}
