@@ -62,3 +62,44 @@ jobs:
           name: frontend-dist
           path: frontend/dist/
           if-no-files-found: ignore
+
+  # 真机验证"一键起全栈"：GitHub runner 自带 Docker，所以 compose 编排在这里能被真正跑起来，
+  # 而不是只做静态校验。跑通后再通过 Nginx（80 端口）打一遍端到端冒烟脚本。
+  e2e:
+    name: e2e (docker compose full stack)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate compose file
+        run: docker compose config -q
+
+      - name: Build images
+        run: docker compose build
+
+      - name: Start stack
+        run: docker compose up -d
+
+      - name: Wait for backend health
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8080/actuator/health | grep -q '"status":"UP"'; then
+              echo "backend 已就绪（第 $i 次探测）"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "backend 未在 300 秒内就绪"
+          docker compose logs --tail=200
+          exit 1
+
+      - name: Smoke test through Nginx (port 80)
+        run: BASE_URL=http://127.0.0.1 bash scripts/smoke-e2e.sh
+
+      - name: Dump container logs on failure
+        if: failure()
+        run: docker compose logs --tail=300
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
