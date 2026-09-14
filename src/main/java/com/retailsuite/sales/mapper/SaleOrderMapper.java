@@ -14,8 +14,11 @@ import java.util.List;
 @Mapper
 public interface SaleOrderMapper extends BaseMapper<SaleOrder> {
 
-    @Select("SELECT * FROM sale_order WHERE request_id = #{requestId} AND deleted = 0")
-    SaleOrder selectByRequestId(@Param("requestId") String requestId);
+    // 幂等查询必须带上 store_id：request_id 唯一索引是全局的，但跨门店撞 request_id 时
+    // 绝不能把别家门店的订单回给本门店（跨租户泄露）。本店同 request_id 才视为幂等命中。
+    @Select("SELECT * FROM sale_order WHERE request_id = #{requestId} AND store_id = #{storeId} AND deleted = 0")
+    SaleOrder selectByRequestId(@Param("storeId") Long storeId,
+                                @Param("requestId") String requestId);
 
     @Select("""
             SELECT * FROM sale_order

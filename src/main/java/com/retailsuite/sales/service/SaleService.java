@@ -77,8 +77,8 @@ public class SaleService {
                     + "（可选 " + PAY_METHODS + "）");
         }
 
-        // 快路径：同一个 requestId 再来一次，直接返回首次结果
-        SaleOrder existing = orderMapper.selectByRequestId(request.requestId());
+        // 快路径：同一个 requestId 再来一次，直接返回首次结果（按本店过滤，杜绝跨门店泄露）
+        SaleOrder existing = orderMapper.selectByRequestId(storeId, request.requestId());
         if (existing != null) {
             log.info("幂等命中 requestId={} orderNo={}", request.requestId(), existing.getOrderNo());
             return toView(existing, true, null);
@@ -88,10 +88,13 @@ public class SaleService {
         try {
             created = transactionTemplate.execute(status -> doCheckout(storeId, request));
         } catch (DuplicateKeyException e) {
-            // 并发重复提交：唯一索引兜底，回查首次结果（此时原事务已回滚，库存没有被扣两次）
-            SaleOrder first = orderMapper.selectByRequestId(request.requestId());
+            // 并发重复提交：唯一索引兜底，回查本店首次结果（此时原事务已回滚，库存没有被扣两次）
+            SaleOrder first = orderMapper.selectByRequestId(storeId, request.requestId());
             if (first == null) {
-                throw e;
+                // 命中的是**别的门店**的同 request_id（全局唯一索引），不是本店的幂等重试：
+                // 不能把别家订单返回，也不能静默放过——明确报冲突，让前端换一个幂等键
+                throw new BizException(ErrorCode.CONFLICT,
+                        "请求流水号与其他门店的单据冲突，请更换 requestId 后重试");
             }
             log.warn("并发重复提交被唯一索引拦截 requestId={}，返回首次订单 {}",
                     request.requestId(), first.getOrderNo());
@@ -211,6 +214,19 @@ public class SaleService {
             throw new BizException(ErrorCode.CONFLICT, "当前订单状态不支持退货：" + statusText(order.getStatus()));
         }
 
+        // 退款金额一致性：折扣是"整单级"的，退某一行时要按它占应收金额的比例分摊折扣，
+        // 而不是按行挂牌价全额退。否则"顾客只付了 150，却退给他 200"，钱箱直接倒亏。
+        BigDecimal totalAmount = order.getTotalAmount() == null ? BigDecimal.ZERO : order.getTotalAmount();
+        BigDecimal discountAmount = order.getDiscountAmount() == null ? BigDecimal.ZERO : order.getDiscountAmount();
+        BigDecimal payAmount = order.getPayAmount() == null ? totalAmount : order.getPayAmount();
+        // 实收系数 = 实收 / 应收（无折扣时为 1）；应收为 0 时退 0
+        BigDecimal paidRatio = totalAmount.compareTo(BigDecimal.ZERO) > 0
+                ? payAmount.divide(totalAmount, 6, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
+        // 本次退款前已退金额（来自 DB 快照，applyRefund 会在其上累加）
+        BigDecimal alreadyRefunded = order.getRefundAmount() == null ? BigDecimal.ZERO : order.getRefundAmount();
+        BigDecimal remainRefundable = payAmount.subtract(alreadyRefunded);
+
         BigDecimal refundDelta = BigDecimal.ZERO;
         for (SalesDtos.RefundItemRequest refundItem : request.items()) {
             SaleOrderItem item = requireItem(orderId, refundItem.orderItemId());
@@ -222,8 +238,21 @@ public class SaleService {
             }
             inventoryService.increase(storeId, item.getProductId(), refundItem.quantity(), "REFUND",
                     order.getOrderNo(), "退货入库：" + order.getOrderNo());
-            refundDelta = refundDelta.add(item.getUnitPrice()
-                    .multiply(BigDecimal.valueOf(refundItem.quantity())));
+            // 行退款额 = 行挂牌金额 × 实收系数（折扣按比例分摊到本行）
+            BigDecimal lineRefund = item.getUnitPrice()
+                    .multiply(BigDecimal.valueOf(refundItem.quantity()))
+                    .multiply(paidRatio)
+                    .setScale(2, RoundingMode.HALF_UP);
+            refundDelta = refundDelta.add(lineRefund);
+        }
+
+        // 兜底封顶：累计退款绝不超过实收（多次部分退款的舍入误差在这里被吸收，整单全退恰好等于实收）
+        if (refundDelta.compareTo(remainRefundable) > 0) {
+            log.warn("退款金额按实收封顶 orderNo={} 计算={} 可退={}", order.getOrderNo(), refundDelta, remainRefundable);
+            refundDelta = remainRefundable;
+        }
+        if (refundDelta.compareTo(BigDecimal.ZERO) < 0) {
+            refundDelta = BigDecimal.ZERO;
         }
 
         List<SaleOrderItem> items = itemMapper.listByOrder(orderId);
