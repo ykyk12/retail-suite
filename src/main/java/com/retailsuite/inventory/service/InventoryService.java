@@ -3,6 +3,7 @@ package com.retailsuite.inventory.service;
 import com.retailsuite.common.BizException;
 import com.retailsuite.common.ErrorCode;
 import com.retailsuite.common.Ids;
+import com.retailsuite.metrics.BusinessMetrics;
 import com.retailsuite.inventory.dto.InventoryDtos;
 import com.retailsuite.inventory.entity.InventoryFlow;
 import com.retailsuite.inventory.entity.ProductBatch;
@@ -63,6 +64,7 @@ public class InventoryService {
     private final ProductMapper productMapper;
     private final InventoryFlowMapper flowMapper;
     private final ProductBatchMapper batchMapper;
+    private final BusinessMetrics metrics;
 
     // ------------------------------------------------------------------ 出库
 
@@ -92,6 +94,7 @@ public class InventoryService {
         if (rows == 0) {
             Product latest = productMapper.selectById(productId);
             int stock = safeStock(latest);
+            metrics.outOfStock(storeId);
             throw new BizException(ErrorCode.STOCK_NOT_ENOUGH,
                     "商品「" + product.getName() + "」库存不足：需要 " + quantity + "，当前 " + stock);
         }

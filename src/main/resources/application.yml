@@ -94,6 +94,11 @@ app:
     max-items-per-order: 200
     # 幂等键保留天数（清理任务用）
     idempotency-retention-days: 7
+  security:
+    # 登录防爆破：同一用户名连续失败 N 次后锁定
+    login-max-fail: ${LOGIN_MAX_FAIL:5}
+    # 锁定时长（秒）：连续失败滑动续期，停止尝试后自动解锁
+    login-block-seconds: ${LOGIN_BLOCK_SECONDS:300}
   report:
     # 日报汇总任务执行时间（分钟粒度 cron 用 @Scheduled(cron) 配置）
     daily-summary-cron: "0 10 0 * * ?"

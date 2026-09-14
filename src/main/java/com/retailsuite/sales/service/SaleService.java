@@ -9,6 +9,7 @@ import com.retailsuite.common.Ids;
 import com.retailsuite.common.PageResult;
 import com.retailsuite.config.AppProperties;
 import com.retailsuite.inventory.service.InventoryService;
+import com.retailsuite.metrics.BusinessMetrics;
 import com.retailsuite.product.entity.Product;
 import com.retailsuite.product.mapper.ProductMapper;
 import com.retailsuite.sales.dto.SalesDtos;
@@ -63,6 +64,7 @@ public class SaleService {
     private final AuditService auditService;
     private final AppProperties properties;
     private final TransactionTemplate transactionTemplate;
+    private final BusinessMetrics metrics;
 
     /** 收银结算（幂等）。 */
     public SalesDtos.View checkout(Long storeId, SalesDtos.CheckoutRequest request) {
@@ -97,6 +99,7 @@ public class SaleService {
                     "并发重复提交被幂等键拦截，requestId=" + request.requestId());
             return toView(first, true, null);
         }
+        metrics.checkoutSuccess(storeId, request.payMethod());
         return toView(created, false, null);
     }
 
@@ -232,6 +235,7 @@ public class SaleService {
                 LocalDateTime.now());
         auditService.record("SALE_REFUND", "sale_order", order.getOrderNo(),
                 "退货 " + request.items().size() + " 行，退款 " + refundDelta + "，状态 → " + statusText(status));
+        metrics.refundSuccess(storeId);
         log.info("退货完成 orderNo={} 退款={} status={}", order.getOrderNo(), refundDelta, status);
         return detail(storeId, orderId);
     }

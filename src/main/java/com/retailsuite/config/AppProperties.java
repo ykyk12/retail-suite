@@ -16,6 +16,7 @@ public class AppProperties {
     private Report report = new Report();
     private Ai ai = new Ai();
     private Steward steward = new Steward();
+    private Security security = new Security();
 
     @Data
     public static class Jwt {
@@ -53,6 +54,14 @@ public class AppProperties {
         private int marginAlertPercent = 10;
         /** 补货建议的备货覆盖天数 */
         private int coverDays = 7;
+    }
+
+    @Data
+    public static class Security {
+        /** 同一用户名连续登录失败达到该次数后临时锁定（防爆破/撞库）。 */
+        private int loginMaxFail = 5;
+        /** 锁定时长（秒）：连续失败期间滑动续期，停止尝试后自动过期解锁。 */
+        private int loginBlockSeconds = 300;
     }
 
     @Data

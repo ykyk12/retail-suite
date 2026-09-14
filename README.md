@@ -266,6 +266,7 @@ Agent 的危险不在于答错，而在于**它有权改你的账**。所以约�
 
 | 版本 | 说明 |
 |---|---|
+| 1.6.0 | **对标升级（见 11.1）**：业务可观测指标（Micrometer 埋点登录成败/收银/退货/出库不足，自动出现在 `/actuator/metrics`）；登录失败限流（Redis `INCR` 计数 + 优雅降级，Redis 故障时放行并告警，不把正常用户挡在门外）；JWT 滑动续期接口 `POST /api/auth/refresh`（续期时实时回查账号是否停用，弥补无状态令牌"改权限要等过期才生效"的已知边界）。后端测试 73 → 84（+11） |
 | 1.5.1 | 收尾：宿主机端口全部参数化（`FRONTEND_HOST_PORT` / `BACKEND_HOST_PORT` / `MYSQL_HOST_PORT` / `REDIS_HOST_PORT`，本机 3306 被占也不用再维护一份 compose 副本）；Windows 版冒烟脚本首次真机跑通并修 4 个坑（`$var?` 被当成变量名、PS 5.1 读不到非 2xx 的响应体、单元素 JSON 数组的 `.Count`、中文 .ps1 缺 UTF-8 BOM），并纳入 CI（含 BOM 守卫）；`shortlink-agent` 去掉硬编码的 DeepSeek Key 默认值 |
 | 1.5.0 | 界面全面美化：抽出全站设计变量（配色/圆角/阴影/间距）并统一覆盖 Element Plus 主题，侧边栏与顶栏重做（品牌标、选中态胶囊、门店与账号信息区）、看板换成分区指标卡、管家对话改成气泡式（左右分列 + 头像 + 固定输入区）；修复实机暴露的两个数据问题：**种子中文双重编码**（MySQL 容器客户端默认 latin1 → 初始化脚本加 `SET NAMES utf8mb4`）、**期初库存没有批次**导致首装就报账实不符（初始化流程自动补「期初建账」批次，并把该发现的文案改成可照做的修正步骤） |
 | 1.4.1 | Windows/Git Bash 实机适配：冒烟脚本请求体改走 stdin（命令行参数会被 MSYS2 按 ANSI 转码，中文变 GBK 导致服务端 `Invalid UTF-8 middle byte`）、账号变量改名避开 Windows 的 `USERNAME`、jq 取值剥 CR；`docs/DEPLOY.md` 补国内网络与端口占用的排查项。已在 Windows 11 + Docker Desktop(WSL2) 实机跑通 compose 全栈 42/42 |
@@ -274,6 +275,40 @@ Agent 的危险不在于答错，而在于**它有权改你的账**。所以约�
 | 1.2.0 | 管家主动巡检：每天开门前自动巡检（过期/临期/断货/补货/滞销/毛利异常/账实不符/批次不符）→ 结构化日报落库 → 补货建议一键转采购草稿；新增毛利异常工具（第 10 个工具）；补货与滞销口径抽成单一口径服务（对话与日报结论必然一致）；e2e 冒烟扩到 40 项 |
 | 1.1.0 | 批次与保质期：批次台账（进价/生产日/到期日）、FEFO 先到期先出、过期报损、临期汇总；管家 Agent：9 个声明式工具 + 权限过滤 + 限流 + 审计 + 多轮会话 + 规则兜底，写操作只出草稿；旧助手接口统一由 Agent 运行时接管；e2e 冒烟扩到 31 项 |
 | 1.0.0 | 首个完整版本：认证与权限（JWT + 权限码 + 门店隔离 + 审计）、商品与分类、库存条件更新防超卖与流水、采购入库、收银幂等结算、退货回补、日报与 TOP 商品与对账、Excel 流式导出、AI 录单与经营助手、Vue3 前端（收银台 + 管理后台）、双 job CI、Docker Compose 全栈部署 |
+
+### 11.1 本次对标升级（v1.6.0）详情
+
+**对标了哪些真实高星开源项目（仅借鉴设计思想，自行实现，未复制源码）：**
+
+| 项目 | Star 量级 | URL | 借鉴了什么 |
+|---|---|---|---|
+| frappe/ERPNext | ~3 万（24k–37k，随时间波动） | https://github.com/frappe/erpnext | 库存流水 + 批次对账、审计留痕的整体设计（本项目早已落地，本次补充"出库不足"等可观测信号） |
+| macrozheng/mall | ~2.7 万 | https://github.com/macrozheng/mall | 把核心业务事件量化为监控指标的做法；Redis 作为限流/计数设施 |
+| macrozheng/mall-swarm | ~1.3 万 | https://github.com/macrozheng/mall-swarm | 微服务商城里"监控中心"把业务指标透出的思路 |
+| uniCenta oPOS（Java 老牌 POS） | 千级 | https://github.com/uniCenta/unicentapos | 收银/登录侧的健壮性与防爆破习惯 |
+
+**吸收了哪三点：**
+
+1. **业务可观测指标（Micrometer 埋点）**——对标 mall/mall-swarm 的监控思路。Actuator 本就在依赖里，新增 `metrics/BusinessMetrics` 薄封装，把登录成败、收银成功（按支付方式打 tag）、退货、出库时库存不足等事件接到 `MeterRegistry`，自动出现在 `/actuator/metrics`。薄封装的原因：指标名/tag 集中一处好改名，且**埋点失败绝不影响主业务**（与审计同一原则）。
+2. **登录失败限流 + Redis 优雅降级**——对标零售系统防爆破/撞库的通用实践，并让项目此前"声明却没真正用过"的 spring-data-redis 承担第一个真实职责。同一用户名连续失败 N 次（默认 5）后临时锁定 M 秒（默认 300，滑动窗口）；**Redis 故障时 fail-open（放行 + 告警）**，因为限流是加固项不是登录主链路，绝不能因 Redis 挂掉把正常用户挡在门外。
+3. **JWT 滑动续期 `POST /api/auth/refresh`**——对标主流无状态 JWT 体系的 refresh 模式。用仍有效的令牌换新令牌；续期时**实时回查账号是否停用**，把代码注释里早就写明的已知边界（"无状态令牌改权限/停用后要等过期才生效"）从最长 120 分钟压缩到"下次续期立即生效"，前端也可在临过期前主动续期，避免被迫重新登录。
+
+**改了哪些文件：**
+
+- 新增 `src/main/java/com/retailsuite/metrics/BusinessMetrics.java`
+- 新增 `src/main/java/com/retailsuite/security/LoginRateLimiter.java`
+- 改 `src/main/java/com/retailsuite/config/AppProperties.java`（新增 `app.security.*`）
+- 改 `src/main/resources/application.yml`（新增 `app.security.login-max-fail / login-block-seconds`）
+- 改 `src/main/java/com/retailsuite/user/service/AuthService.java`（接入限流+埋点，新增 `refresh()`）
+- 改 `src/main/java/com/retailsuite/user/controller/AuthController.java`（新增 `/api/auth/refresh`）
+- 改 `src/main/java/com/retailsuite/sales/service/SaleService.java`（收银/退货埋点）
+- 改 `src/main/java/com/retailsuite/inventory/service/InventoryService.java`（出库不足埋点）
+- 新增测试：`src/test/java/com/retailsuite/security/LoginRateLimiterTest.java`、`AuthRefreshTest.java`、`BusinessMetricsObservabilityTest.java`
+
+**验证命令与结果：**
+
+- `mvn -B test` → **Tests run: 84, Failures: 0, Errors: 0, Skipped: 0（BUILD SUCCESS）**，原 73 个用例全部保持绿，新增 11 个。
+- `cd frontend && npm run build` → **✓ built in 21.58s**（类型检查 + 构建通过）。
 
 ## 12. License
 

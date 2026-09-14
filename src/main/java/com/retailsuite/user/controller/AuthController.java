@@ -36,6 +36,13 @@ public class AuthController {
         return ApiResponse.ok(authService.currentUser());
     }
 
+    @PostMapping("/refresh")
+    @Operation(summary = "刷新令牌（滑动续期）",
+            description = "用仍有效的令牌换新令牌；续期时实时校验账号是否停用，弥补无状态令牌改权限不及时的短板")
+    public ApiResponse<LoginResponse> refresh() {
+        return ApiResponse.ok(authService.refresh());
+    }
+
     /**
      * 退出登录。JWT 是无状态的，服务端不存会话，所以这里只记录审计，令牌由前端丢弃。
      * 如果业务要求"退出后令牌立即失效"，方案是把令牌版本号写进用户表（改密码/退出即 +1），
