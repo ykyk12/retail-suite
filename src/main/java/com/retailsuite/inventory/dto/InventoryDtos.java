@@ -87,4 +87,20 @@ public final class InventoryDtos {
 
     public record FlowPage(List<FlowView> records, long total, long page, long size) {
     }
+
+    /** 低库存预警工单视图（OPEN=待处理，RESOLVED=已闭环）。 */
+    public record AlertView(Long id,
+                            Long productId,
+                            String productName,
+                            Integer stockAtAlert,
+                            Integer threshold,
+                            String status,
+                            String resolveRemark,
+                            LocalDateTime createdAt,
+                            LocalDateTime resolvedAt) {
+    }
+
+    /** 闭环工单请求（备注可空）。 */
+    public record ResolveAlertRequest(@Size(max = 200, message = "闭环备注过长") String remark) {
+    }
 }

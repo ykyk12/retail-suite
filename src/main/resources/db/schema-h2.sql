@@ -298,3 +298,26 @@ ALTER TABLE product ADD COLUMN IF NOT EXISTS shelf_life_days INT;
 ALTER TABLE inventory_flow ADD COLUMN IF NOT EXISTS batch_id BIGINT;
 ALTER TABLE purchase_order_item ADD COLUMN IF NOT EXISTS production_date DATE;
 ALTER TABLE purchase_order_item ADD COLUMN IF NOT EXISTS shelf_life_days INT;
+
+-- ============================================================================
+-- 低库存预警工单（闭环）：出库把库存砸到阈值以下时自动开单，店长补货/盘点后手动闭环。
+--   1) 同一商品只要挂着 OPEN 工单就不重复开（服务层"先查后插"，出库持商品行锁串行化）；
+--   2) status: OPEN(待处理) / RESOLVED(已闭环)；
+--   3) 与库存流水同一事务写入：缺货与开单原子一致。
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS stock_alert (
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+    store_id        BIGINT       NOT NULL,
+    product_id      BIGINT       NOT NULL,
+    product_name    VARCHAR(128),
+    stock_at_alert  INT          NOT NULL DEFAULT 0,
+    threshold       INT          NOT NULL DEFAULT 0,
+    status          VARCHAR(16)  NOT NULL,
+    resolve_remark  VARCHAR(200),
+    resolved_by     BIGINT,
+    resolved_at     DATETIME,
+    created_at      DATETIME     NOT NULL,
+    updated_at      DATETIME     NOT NULL,
+    deleted         TINYINT      NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_stock_alert_store_status ON stock_alert (store_id, status);

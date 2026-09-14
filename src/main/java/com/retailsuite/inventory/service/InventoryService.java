@@ -65,6 +65,7 @@ public class InventoryService {
     private final InventoryFlowMapper flowMapper;
     private final ProductBatchMapper batchMapper;
     private final BusinessMetrics metrics;
+    private final StockAlertService stockAlertService;
 
     // ------------------------------------------------------------------ 出库
 
@@ -99,7 +100,10 @@ public class InventoryService {
                     "商品「" + product.getName() + "」库存不足：需要 " + quantity + "，当前 " + stock);
         }
         Long batchId = issueBatches(storeId, product, quantity);
-        return recordFlow(storeId, productId, flowType, -quantity, refType, refNo, remark, batchId);
+        InventoryFlow flow = recordFlow(storeId, productId, flowType, -quantity, refType, refNo, remark, batchId);
+        // 出库后评估是否触发低库存预警工单（与出库同事务：缺货了就开一条可闭环的待办）
+        stockAlertService.onStockOutflow(storeId, productId);
+        return flow;
     }
 
     /**

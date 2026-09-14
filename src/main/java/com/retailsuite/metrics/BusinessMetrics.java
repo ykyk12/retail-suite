@@ -50,6 +50,11 @@ public class BusinessMetrics {
         incr("app.sale.refund", storeId, null);
     }
 
+    /** 低库存预警工单新开（闭环节奏的观测信号：开得越密说明越频繁缺货）。 */
+    public void stockAlertOpened(Long storeId) {
+        incr("app.stock_alert.opened", storeId, null);
+    }
+
     private void incr(String name, Long storeId, String ignored) {
         counter(name, storeId, null, null).increment();
     }

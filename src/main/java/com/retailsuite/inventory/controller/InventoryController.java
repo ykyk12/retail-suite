@@ -29,6 +29,7 @@ public class InventoryController {
 
     private final InventoryService inventoryService;
     private final ExpiryService expiryService;
+    private final com.retailsuite.inventory.service.StockAlertService stockAlertService;
 
     @GetMapping("/low-stock")
     @RequiresPermission("inventory:read")
@@ -95,6 +96,29 @@ public class InventoryController {
     public ApiResponse<InventoryDtos.FlowView> loss(@Valid @RequestBody InventoryDtos.LossRequest request) {
         Long storeId = UserContext.requireStoreId();
         return ApiResponse.ok(toView(inventoryService.loss(storeId, request)));
+    }
+
+    @GetMapping("/alerts")
+    @RequiresPermission("inventory:read")
+    @Operation(summary = "低库存预警工单（OPEN 待处理）")
+    public ApiResponse<List<InventoryDtos.AlertView>> alerts() {
+        return ApiResponse.ok(stockAlertService.listOpen(UserContext.requireStoreId()));
+    }
+
+    @GetMapping("/alerts/all")
+    @RequiresPermission("inventory:read")
+    @Operation(summary = "低库存预警工单历史（含已闭环）")
+    public ApiResponse<List<InventoryDtos.AlertView>> allAlerts() {
+        return ApiResponse.ok(stockAlertService.listAll(UserContext.requireStoreId()));
+    }
+
+    @PostMapping("/alerts/{id}/resolve")
+    @RequiresPermission("inventory:adjust")
+    @Operation(summary = "闭环低库存预警工单（补货/盘点后处理完毕）")
+    public ApiResponse<InventoryDtos.AlertView> resolveAlert(@PathVariable Long id,
+                                                             @Valid @RequestBody(required = false) InventoryDtos.ResolveAlertRequest request) {
+        String remark = request == null ? null : request.remark();
+        return ApiResponse.ok(stockAlertService.resolve(UserContext.requireStoreId(), id, remark));
     }
 
     private InventoryDtos.FlowView toView(InventoryFlow flow) {
