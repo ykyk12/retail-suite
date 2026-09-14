@@ -5,12 +5,12 @@
    ============================================================================ */
 
 :root {
-  /* 品牌色与语义色 */
-  --brand: #2f6bff;
-  --brand-strong: #1f4fd8;
-  --brand-weak: #eef3ff;
-  --ok: #17a673;
-  --warn: #e8a33d;
+  /* 品牌色与语义色：主色稳重蓝绿，成功绿 / 警告橙点缀 */
+  --brand: #0e7c86;
+  --brand-strong: #0a5c64;
+  --brand-weak: #e6f4f4;
+  --ok: #52c41a;
+  --warn: #fa8c16;
   --danger: #e5484d;
   --info: #7b8494;
 
@@ -29,14 +29,14 @@
   --radius-lg: 16px;
   --shadow-sm: 0 1px 2px rgba(20, 32, 60, 0.04), 0 1px 3px rgba(20, 32, 60, 0.06);
   --shadow-md: 0 6px 16px rgba(20, 32, 60, 0.06), 0 16px 32px -12px rgba(20, 32, 60, 0.1);
-  --ring: 0 0 0 3px rgba(47, 107, 255, 0.14);
+  --ring: 0 0 0 3px rgba(14, 124, 134, 0.14);
 
-  /* Element Plus 主题变量覆盖：主色及其明暗梯度 */
+  /* Element Plus 主题变量覆盖：主色及其明暗梯度（蓝绿系） */
   --el-color-primary: var(--brand);
-  --el-color-primary-light-3: #5b8bff;
-  --el-color-primary-light-5: #8aa9ff;
-  --el-color-primary-light-7: #b8caff;
-  --el-color-primary-light-8: #d0dcff;
+  --el-color-primary-light-3: #3f9aa3;
+  --el-color-primary-light-5: #73bcc2;
+  --el-color-primary-light-7: #a6d9dc;
+  --el-color-primary-light-8: #c4e5e8;
   --el-color-primary-light-9: var(--brand-weak);
   --el-color-primary-dark-2: var(--brand-strong);
   --el-color-success: var(--ok);

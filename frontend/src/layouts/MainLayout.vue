@@ -148,7 +148,7 @@ async function onCommand(command: string) {
   justify-content: center;
   background: linear-gradient(135deg, var(--brand) 0%, #7aa2ff 100%);
   color: #fff;
-  box-shadow: 0 6px 16px rgba(47, 107, 255, 0.35);
+  box-shadow: 0 6px 16px rgba(14, 124, 134, 0.35);
 }
 
 .brand-name {
@@ -186,8 +186,8 @@ async function onCommand(command: string) {
 
 .menu :deep(.el-menu-item.is-active) {
   color: #fff;
-  background: linear-gradient(90deg, rgba(47, 107, 255, 0.95) 0%, rgba(47, 107, 255, 0.65) 100%);
-  box-shadow: 0 6px 16px rgba(47, 107, 255, 0.28);
+  background: linear-gradient(90deg, rgba(14, 124, 134, 0.95) 0%, rgba(14, 124, 134, 0.65) 100%);
+  box-shadow: 0 6px 16px rgba(14, 124, 134, 0.28);
 }
 
 .aside-foot {

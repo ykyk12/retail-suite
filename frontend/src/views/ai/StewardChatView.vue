@@ -284,10 +284,10 @@ async function scrollToBottom() {
 }
 
 .question-bubble {
-  background: linear-gradient(135deg, var(--brand) 0%, #5b8bff 100%);
+  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-strong) 100%);
   color: #fff;
   border-radius: 14px 14px 4px 14px;
-  box-shadow: 0 6px 16px rgba(47, 107, 255, 0.22);
+  box-shadow: 0 6px 16px rgba(14, 124, 134, 0.22);
 }
 
 .answer-bubble {
