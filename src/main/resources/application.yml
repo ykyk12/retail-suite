@@ -67,6 +67,15 @@ management:
   endpoint:
     health:
       show-details: always
+  health:
+    redis:
+      # Redis 在本项目里是"可选加固"依赖：登录限流走 fail-open（连不上就放行），
+      # 应用其余能力完全不依赖 Redis。因此 Redis 不可用时**不应**把整体健康度判为 DOWN——
+      # 否则 K8s / 负载均衡会把一个其实能正常服务的实例直接摘流（本轮真实踩到：health=503）。
+      # 注意是 management.health.redis.enabled（健康探针开关），不是 management.endpoint.health.*。
+      # 默认关闭 Redis 健康探针；若确需把它当强依赖，用 REDIS_HEALTH_ENABLED=true 打开。
+      # 生产 profile（application-prod.yml）里 Redis 是真依赖，显式置为 true。
+      enabled: ${REDIS_HEALTH_ENABLED:false}
 
 springdoc:
   swagger-ui:

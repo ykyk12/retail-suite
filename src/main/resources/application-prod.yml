@@ -32,6 +32,10 @@ management:
     web:
       exposure:
         include: health,info,metrics
+  health:
+    # 生产环境 Redis 是真依赖（分布式登录限流计数），保留健康探针
+    redis:
+      enabled: true
 
 logging:
   level:
